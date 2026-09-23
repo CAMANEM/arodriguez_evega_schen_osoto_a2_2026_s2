@@ -1,14 +1,14 @@
 # Project 1 — Multithreading Simulations
 
-Particle simulations implemented in C++ exploring multithreading strategies.
-Each problem is self-contained and shares a common object interface.
+Particle simulations implemented in C++ evaluated under four execution models:
+Fine-Grained, Coarse-Grained, SMT, and CMP multithreading.
 
 ## Problems
 
 | Folder | Simulation |
 |---|---|
 | `boids/` | Flocking behavior (separation, alignment, cohesion) |
-| `n_body/` | Gravitational attraction — universal law |
+| `n_body/` | Gravitational attraction (universal law) |
 | `liquids/` | Particle-based fluid simulation |
 | `ray_traycing/` | Ray tracing |
 
@@ -18,7 +18,7 @@ Each problem is self-contained and shares a common object interface.
 proyect_1-Multithreading/
 ├── shared/
 │   ├── include/
-│   │   └── object_interface.hpp
+│   │   └── object_interface.hpp    
 │   └── src/
 ├── boids/
 │   ├── include/
@@ -44,8 +44,34 @@ proyect_1-Multithreading/
 
 ## Shared Interface
 
-`shared/include/object_interface.hpp` defines the abstract base class that all
-simulation objects must inherit from.
+`shared/include/object_interface.hpp` defines the abstract base class all simulation
+objects must inherit from. It holds the common physical state and declares the two
+methods every object must implement.
+
+**Attributes:**
+
+| Attribute | Type | Description |
+|---|---|---|
+| `id` | `int` | Unique object identifier |
+| `mass` | `double` | Object mass |
+| `pos_x`, `pos_y` | `double` | Position |
+| `acc_x`, `acc_y` | `double` | Acceleration |
+| `force_x`, `force_y` | `double` | Accumulated force |
+| `speed_x`, `speed_y` | `double` | Velocity |
+
+**Other methods:**
+
+| Method | Description |
+|---|---|
+| `update(double dt)` | Integration step — applies stored forces to update acceleration, velocity and position |
+| `reset()` | Restores object to its initial state — required between benchmark runs |
+
+Force computation is intentionally excluded from the interface. Each problem implements
+its own force function which operates over the full collection of objects and deposits
+results via `set_force()` before `update(dt)` is called. This separation allows both
+phases to be parallelized independently by the execution scheme.
+
+**Usage:**
 
 ```cpp
 #include "../../shared/include/object_interface.hpp"
@@ -55,22 +81,7 @@ public:
     MyObject(int id, double mass, double x, double y)
         : object_interface(id, mass) {set_position(x, y);}
 
-    void compute_forces() override { /* problem-specific logic */ }
-    void update(double dt) override { /* problem-specific logic */ }
-    void reset() override { /* problem-specific logic */ }
+    void update(double dt) override { /* integration logic */ }
+    void reset() override { /* restore initial state */ }
 };
 ```
-
-**Attributes inherited from `object_interface`:**
-
-| Attribute | Type | Description |
-|---|---|---|
-| `id` | `int` | Unique object identifier |
-| `mass` | `double` | Object mass |
-| `pos_x`, `pos_y` | `double` | Position |
-| `force_x`, `force_y` | `double` | Accumulated force |
-| `speed_x`, `speed_y` | `double` | Velocity |
-
-## Data
-
-Each problem stores its VTune Profiler measurements and screenshots under its own `data/` folder.
