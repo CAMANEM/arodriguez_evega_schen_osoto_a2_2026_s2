@@ -11,7 +11,9 @@
 enum class execution_model {
     sequential,      /**< Baseline with no parallel execution scheme. */
     fine_grained,    /**< Fine-grained multithreading. */
-    coarse_grained   /**< Coarse-grained multithreading. */
+    coarse_grained,  /**< Coarse-grained multithreading. */
+    smt,             /**< Simultaneous multithreading (hardware SMT / software approximation). */
+    cmp              /**< Chip multiprocessing (one worker per physical core). */
 };
 
 
