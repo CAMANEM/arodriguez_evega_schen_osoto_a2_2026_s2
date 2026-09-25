@@ -1,49 +1,104 @@
-# Flocking / Boids — Demostración 2 (CE4302, Proyecto Grupal 1)
+# Flocking / Boids — Demostración 2
 
-## Compilar y ejecutar
+Implementación C++17 de Boids para comparar una base secuencial con modelos
+fine-grained, coarse-grained, SMT y CMP.
+
+## Requisitos
+
+- Compilador compatible con C++17.
+- CMake 3.16 o posterior.
+- Raylib solamente para la modalidad gráfica.
+
+Las mediciones principales del proyecto deben ejecutarse en hardware físico,
+no en WSL, máquinas virtuales ni contenedores.
+
+## Compilar y probar
+
+Desde la raíz del repositorio:
 
 ```bash
-make run
+cmake -S proyect_1-Multithreading/Boids -B build/boids
+cmake --build build/boids --config Release
+ctest --test-dir build/boids -C Release --output-on-failure
 ```
 
-Imprime la tabla de métricas preliminares (con validación de correctitud) y exporta 70 frames `.ppm` en `frames/` mostrando 350 pasos de simulación. Para verlos como animación:
+Si Raylib no está disponible, CMake omite `boids_visual` y mantiene funcionales
+el benchmark y las pruebas. También se puede desactivar explícitamente:
 
 ```bash
-convert -delay 6 -loop 0 frames/frame_*.ppm flock.gif
+cmake -S proyect_1-Multithreading/Boids -B build/boids -DBOIDS_BUILD_VISUAL=OFF
 ```
 
-(requiere ImageMagick; si no está instalado, cualquier herramienta que combine PPM en GIF/MP4 sirve, p. ej. `ffmpeg -i frames/frame_%03d.ppm flock.mp4`).
+## Ejecutar
 
-## Qué cumple esta entrega (según el enunciado de la Demo 2)
+Modalidad no gráfica:
 
-| Requisito de la Demo 2 | Dónde está |
+```bash
+./build/boids/boids_benchmark
+```
+
+En generadores multiconfiguración de Windows, el ejecutable suele quedar en
+`build/boids/Release/boids_benchmark.exe`.
+
+El benchmark imprime tiempos y validaciones de los cinco esquemas. También
+exporta 70 frames PPM en `frames/`, correspondientes a 350 pasos. Se pueden
+convertir a video con:
+
+```bash
+ffmpeg -framerate 15 -i frames/frame_%03d.ppm -pix_fmt yuv420p flock.mp4
+```
+
+Modalidad gráfica secuencial, cuando Raylib esté disponible:
+
+```bash
+./build/boids/boids_visual
+```
+
+## Evidencia de la Demostración 2
+
+| Requisito | Implementación |
 |---|---|
-| Ejecución del sistema base (sin hilos) | `SequentialScheme` |
-| Identificación de variables críticas | Ver sección siguiente y comentarios en `main.cpp` |
-| Ejecución dummy/parcial de grano fino | `FineGrainedScheme` (round-robin por vecino candidato, 20 boids) |
-| Ejecución dummy de grano grueso | `CoarseGrainedScheme` (4 hilos tradicionales) |
-| Ejecución dummy de SMT | `SmtScheme` (2× `hardware_concurrency()`, sobre-suscripción) |
-| Ejecución dummy de CMP | `CmpScheme` (1 hilo por núcleo lógico reportado por el SO) |
-| Mediciones de tiempo por esquema | `SimulationMetrics` + `Timer`, impresas en `main.cpp` |
-| Evidencia visual funcional | `FrameWriter` + `frames/` (frames de la animación) |
+| Sistema base sin hilos | `SequentialScheme` |
+| Variables críticas | `FlockingConfig` y `main_benchmark.cpp` |
+| Dummy fine-grained | `FineGrainedScheme` y `SteeringContext` |
+| Dummy coarse-grained | `CoarseGrainedScheme` y `ThreadedScheme` |
+| Aproximación SMT | `SmtScheme` con sobresuscripción |
+| Aproximación CMP | `CmpScheme` con trabajadores reales |
+| Mediciones | `BoidsMetrics`, `metrics_interface` y `Timer` |
+| Modalidad no gráfica | `main_benchmark.cpp` y `FrameWriter` |
+| Modalidad gráfica | `main_visual.cpp` y `RaylibRenderer` |
+| Correctitud | `tests/test_boids.cpp` y validaciones del benchmark |
 
-Lo que **no** corresponde a esta etapa: las 200 ejecuciones por configuración, boxplots, intervalos de confianza al 95% y perfilado con `perf`/VTune — eso es para el reporte final.
+Los diagramas y la explicación completa están en
+[`../docs/demo2/README.md`](../docs/demo2/README.md).
 
-## Variables críticas identificadas
+## Variables que aumentan el paralelismo
 
-- **`boidCount`**: determina el volumen total de trabajo; en el peor caso (brute-force, como en N-Body) cada paso evalúa hasta `boidCount × (boidCount - 1)` pares candidato-vecino.
-- **`perceptionRadius` / `separationRadius`**: controlan cuántos vecinos **reales** evalúa cada boid dentro de ese radio. Aquí está la fuente de irregularidad de este problema: aunque el algoritmo *revisa* a todos los demás boids (como N-Body), solo *acumula* contribución de los que caen dentro del radio. Un boid en el centro de un grupo ya formado tiene muchos más vecinos "activos" que uno disperso en una zona vacía — density-dependent, similar en espíritu a la irregularidad de Mandelbrot, pero originada por la dinámica espacial del sistema en vez del tiempo de escape de un cálculo.
-- **Pesos de las reglas (`separationWeight`, `alignmentWeight`, `cohesionWeight`) y `maxForce`**: no afectan el costo computacional, pero sí determinan si el enjambre converge en un grupo cohesionado o se fragmenta en sub-grupos — importante para explicar visualmente lo que se ve en la demo, aunque no es una variable de rendimiento.
+- `boidCount`: determina el volumen de trabajo. La búsqueda directa revisa
+  hasta `boidCount * (boidCount - 1)` pares por paso.
+- `perceptionRadius` y `separationRadius`: cambian cuántos vecinos contribuyen
+  realmente a las reglas y producen una carga dependiente de la densidad.
+- Cantidad de trabajadores: coarse, SMT y CMP dividen los boids en bloques;
+  fine crea un contexto virtual por cada boid de su demostración parcial.
+- Los pesos de separación, alineamiento y cohesión cambian el comportamiento
+  visual, pero no la complejidad de la búsqueda actual.
 
-## Decisiones de diseño relevantes para la defensa
+## Decisiones que deben explicarse en la defensa
 
-- **Cálculo en dos fases** (`SequentialScheme` y `ThreadedScheme`): primero se calculan TODAS las fuerzas de dirección leyendo el enjambre sin modificar, y solo después se aplican TODAS las integraciones. Esto es indispensable para que el resultado no dependa del orden de procesamiento de los boids, y es lo que permite paralelizar sin condiciones de carrera (cada hilo escribe en una porción disjunta del vector de fuerzas, nunca en los boids directamente).
-- **Grano fino con `SteeringContext`**: mismo mecanismo formal usado en Mandelbrot/matrices — un "ciclo" es examinar un único vecino candidato, con planificación round-robin por software. Aquí el análogo del "stall" es un boid con muchos vecinos por examinar (le toma más ciclos completar su cálculo).
-- **`FlockingRules::combineForces` compartido**: tanto el barrido directo (`computeSteeringForBoid`) como el cálculo incremental (`SteeringContext`) usan exactamente la misma función de combinación final, evitando duplicar la fórmula de las tres reglas (principio DRY) y garantizando que ambos caminos den resultados idénticos.
+- El paso se divide en cálculo de fuerzas y aplicación de integraciones. Así
+  todos los esquemas leen el mismo estado y se evitan condiciones de carrera.
+- Fine-grained simula por software un cambio round-robin en cada vecino
+  candidato. Sus trabajadores son contextos virtuales, no hilos del SO.
+- Coarse-grained usa `std::thread` y `join()` como sincronización costosa.
+- SMT sobresuscribe procesadores lógicos. Esto es una aproximación de software,
+  no sustituye la comparación física con SMT habilitado y deshabilitado.
+- CMP usa `std::thread::hardware_concurrency()`. La API informa procesadores
+  lógicos disponibles; no garantiza que sean núcleos físicos.
+- `Boid` implementa `object_interface` y `BoidsMetrics` deriva de
+  `metrics_interface`, por lo que Boids respeta los contratos compartidos.
 
-## Cómo se ve la simulación
+## Alcance estadístico
 
-Con los parámetros por defecto, el enjambre arranca completamente disperso y, tras ~150-200 pasos, se agrupa en varios sub-enjambres que se mueven de forma coordinada (visible en las pequeñas líneas de dirección alineadas dentro de cada grupo). Es un comportamiento válido de boids: dependiendo de la semilla aleatoria y los pesos, el sistema puede converger en un solo grupo grande o en varios más pequeños. Si el grupo prefiere una única parvada grande y más vistosa para la presentación, se puede subir `cohesionWeight` (p. ej. a 1.5) y `perceptionRadius` (p. ej. a 70) en `main.cpp`.
-
-
-D:/caman/Documents/Flash Drive Maya/College/Arquitectura de Computadores II/Proyecto/boids_demo2
+Esta demostración usa mediciones preliminares para probar funcionamiento. Las
+200 o más ejecuciones por configuración, intervalos de confianza, boxplots y
+perfilado con perf o VTune corresponden a la campaña experimental final.

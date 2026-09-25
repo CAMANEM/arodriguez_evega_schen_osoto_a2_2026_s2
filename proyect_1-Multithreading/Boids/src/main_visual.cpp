@@ -1,3 +1,8 @@
+/**
+ * @file main_visual.cpp
+ * @brief Punto de entrada de la modalidad gráfica secuencial de Boids.
+ */
+
 #include <cstdlib>
 #include <iostream>
 
@@ -6,6 +11,9 @@
 #include "core/SequentialScheme.hpp"
 #include "visual/Renderer.hpp"
 
+/**
+ * @brief Ejecuta la simulación secuencial hasta cerrar la ventana.
+ */
 int main() {
     const int boidCount = 250;
     const int windowWidth = 1200;
@@ -18,10 +26,9 @@ int main() {
                                  /*separationWeight=*/6.0, /*alignmentWeight=*/0.7,
                                  /*cohesionWeight=*/0.1, /*deltaTime=*/1.0);
 
-    Renderer* renderer = createRaylibRenderer();
+    std::unique_ptr<Renderer> renderer = createRaylibRenderer();
     if (!renderer->init(windowWidth, windowHeight, "Flocking - Sequential")) {
         std::cerr << "Error al inicializar la ventana\n";
-        delete renderer;
         return 1;
     }
 
@@ -37,6 +44,5 @@ int main() {
     }
 
     renderer->shutdown();
-    delete renderer;
     return 0;
 }

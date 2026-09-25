@@ -1,5 +1,5 @@
 /**
- * @file main.cpp
+ * @file main_benchmark.cpp
  * @brief Punto de entrada del framework experimental de Flocking/Boids
  *        para la Demostración 2 del Proyecto Grupal 1 (CE4302).
  *
@@ -10,17 +10,19 @@
  *      Grano Fino parcial, Grano Grueso, SMT, CMP) partiendo del MISMO
  *      estado inicial, para medir tiempos y validar que el resultado
  *      paralelo coincida con el secuencial.
- *   3. Ejecuta una simulación larga (200 pasos) usando CmpScheme y
+ *   3. Ejecuta una simulación larga (350 pasos) usando CmpScheme y
  *      exporta un frame cada pocos pasos, como evidencia visual funcional
  *      del enjambre formándose y moviéndose.
  *
  * 
  */
 
+#include <algorithm>
 #include <filesystem>
 #include <iomanip>
 #include <iostream>
 #include <sstream>
+#include <string>
 
 #include "core/CmpScheme.hpp"
 #include "core/CoarseGrainedScheme.hpp"
@@ -34,24 +36,44 @@
 
 namespace {
 
-void printMetricsRow(const SimulationMetrics& metrics) {
-    std::cout << std::left << std::setw(45) << metrics.schemeName
-              << std::setw(10) << metrics.threadsUsed
-              << std::setw(15) << std::fixed << std::setprecision(3) << metrics.elapsedMilliseconds
-              << std::setw(12) << metrics.boidsProcessed << "\n";
+/**
+ * @brief Imprime una fila de métricas preliminares del benchmark.
+ * @param metrics Resultado del paso que se desea mostrar.
+ */
+void printMetricsRow(const BoidsMetrics& metrics) {
+    const std::string workerCount =
+        std::to_string(metrics.get_n_workers()) +
+        (metrics.uses_virtual_workers() ? " virtuales" : "");
+    std::cout << std::left << std::setw(50) << metrics.get_scheme_name()
+              << std::setw(16) << workerCount
+              << std::setw(15) << std::fixed << std::setprecision(3)
+              << metrics.elapsed_milliseconds()
+              << std::setw(12) << metrics.get_boids_processed() << "\n";
 }
 
 /**
- * @brief Compara las posiciones de dos enjambres del mismo tamaño con
- *        tolerancia numérica, para validar correctitud entre esquemas.
+ * @brief Compara posición y velocidad de un rango de dos enjambres.
+ * @param a Primer enjambre.
+ * @param b Segundo enjambre.
+ * @param count Cantidad inicial de boids a comparar; un valor negativo
+ *        compara el enjambre completo.
+ * @param tolerance Tolerancia para posición y velocidad.
+ * @return true cuando ambos estados coinciden dentro de la tolerancia.
  */
-bool flocksMatchApprox(const Flock& a, const Flock& b, double tolerance = 1e-6) {
+bool flocksMatchApprox(const Flock& a, const Flock& b, int count = -1,
+                       double tolerance = 1e-6) {
     if (a.getBoidCount() != b.getBoidCount()) {
         return false;
     }
-    for (int i = 0; i < a.getBoidCount(); ++i) {
-        const Vector2D diff = a.getBoid(i).getPosition() - b.getBoid(i).getPosition();
-        if (diff.magnitude() > tolerance) {
+    const int comparedBoids = count < 0 ? a.getBoidCount()
+                                        : std::min(count, a.getBoidCount());
+    for (int i = 0; i < comparedBoids; ++i) {
+        const Vector2D positionDifference =
+            a.getBoid(i).getPosition() - b.getBoid(i).getPosition();
+        const Vector2D velocityDifference =
+            a.getBoid(i).getVelocity() - b.getBoid(i).getVelocity();
+        if (positionDifference.magnitude() > tolerance ||
+            velocityDifference.magnitude() > tolerance) {
             return false;
         }
     }
@@ -60,6 +82,9 @@ bool flocksMatchApprox(const Flock& a, const Flock& b, double tolerance = 1e-6) 
 
 } // namespace
 
+/**
+ * @brief Ejecuta los cinco esquemas y genera evidencia no gráfica.
+ */
 int main() {
     // --- Variables críticas identificadas para la Demostración 2 ---
     // boidCount: volumen total de trabajo (cada paso evalúa hasta
@@ -77,11 +102,11 @@ int main() {
                                  /*separationWeight=*/1.0, /*alignmentWeight=*/1.4,
                                  /*cohesionWeight=*/0.8, /*deltaTime=*/1.0);
 
-    std::cout << std::left << std::setw(45) << "Esquema"
-              << std::setw(10) << "Hilos"
+    std::cout << std::left << std::setw(50) << "Esquema"
+              << std::setw(16) << "Trabajadores"
               << std::setw(15) << "Tiempo (ms)"
               << std::setw(12) << "Boids" << "\n";
-    std::cout << std::string(82, '-') << "\n";
+    std::cout << std::string(93, '-') << "\n";
 
     // Mismo enjambre inicial para todos los esquemas, para poder validar
     // correctitud comparando resultados tras UN solo paso.
@@ -91,7 +116,7 @@ int main() {
     Flock referenceFlock = initialFlock;
     {
         SequentialScheme scheme;
-        const SimulationMetrics metrics = scheme.simulateStep(referenceFlock, config);
+        const BoidsMetrics metrics = scheme.simulateStep(referenceFlock, config);
         printMetricsRow(metrics);
     }
 
@@ -99,15 +124,18 @@ int main() {
     {
         Flock flock = initialFlock;
         FineGrainedScheme scheme(/*partialBoidCount=*/20);
-        const SimulationMetrics metrics = scheme.simulateStep(flock, config);
+        const BoidsMetrics metrics = scheme.simulateStep(flock, config);
         printMetricsRow(metrics);
+        std::cout << "  -> Validacion parcial (20 boids contra baseline): "
+                  << (flocksMatchApprox(flock, referenceFlock, 20) ? "SI" : "NO")
+                  << "\n";
     }
 
     // 3. Esquema de grano grueso: hilos tradicionales sobre el enjambre completo.
     {
         Flock flock = initialFlock;
         CoarseGrainedScheme scheme(/*threadCount=*/4);
-        const SimulationMetrics metrics = scheme.simulateStep(flock, config);
+        const BoidsMetrics metrics = scheme.simulateStep(flock, config);
         printMetricsRow(metrics);
         std::cout << "  -> Validacion (coincide con baseline secuencial): "
                   << (flocksMatchApprox(flock, referenceFlock) ? "SI" : "NO") << "\n";
@@ -117,7 +145,7 @@ int main() {
     {
         Flock flock = initialFlock;
         SmtScheme scheme(/*oversubscriptionFactor=*/2);
-        const SimulationMetrics metrics = scheme.simulateStep(flock, config);
+        const BoidsMetrics metrics = scheme.simulateStep(flock, config);
         printMetricsRow(metrics);
         std::cout << "  -> Validacion (coincide con baseline secuencial): "
                   << (flocksMatchApprox(flock, referenceFlock) ? "SI" : "NO") << "\n";
@@ -127,7 +155,7 @@ int main() {
     {
         Flock flock = initialFlock;
         CmpScheme scheme;
-        const SimulationMetrics metrics = scheme.simulateStep(flock, config);
+        const BoidsMetrics metrics = scheme.simulateStep(flock, config);
         printMetricsRow(metrics);
         std::cout << "  -> Validacion (coincide con baseline secuencial): "
                   << (flocksMatchApprox(flock, referenceFlock) ? "SI" : "NO") << "\n";

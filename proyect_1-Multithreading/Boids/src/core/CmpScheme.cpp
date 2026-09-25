@@ -8,5 +8,9 @@ unsigned int CmpScheme::computeThreadCount(const Flock& /*flock*/) const {
 }
 
 std::string CmpScheme::getSchemeName() const {
-    return "CMP (multiprocesamiento de chip)";
+    return "CMP (un hilo por procesador logico disponible)";
+}
+
+execution_model CmpScheme::getExecutionModel() const {
+    return execution_model::cmp;
 }

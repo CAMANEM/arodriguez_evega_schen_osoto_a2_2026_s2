@@ -24,8 +24,9 @@
  */
 class SequentialScheme : public FlockingScheme {
 public:
-    SimulationMetrics simulateStep(Flock& flock, const FlockingConfig& config) override;
+    BoidsMetrics simulateStep(Flock& flock, const FlockingConfig& config) override;
     std::string getSchemeName() const override;
+    execution_model getExecutionModel() const override;
 };
 
 #endif // SEQUENTIAL_SCHEME_HPP

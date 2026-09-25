@@ -25,7 +25,7 @@
  */
 class ThreadedScheme : public FlockingScheme {
 public:
-    SimulationMetrics simulateStep(Flock& flock, const FlockingConfig& config) final;
+    BoidsMetrics simulateStep(Flock& flock, const FlockingConfig& config) final;
 
 protected:
     /**
@@ -33,7 +33,7 @@ protected:
      *
      * Cada subclase concreta define aquí la política de hardware que
      * representa (grano grueso genérico, sobre-suscripción tipo SMT, o
-     * mapeo 1:1 a núcleos físicos tipo CMP).
+     * mapeo a procesadores lógicos disponibles para aproximar CMP).
      * @param flock Enjambre a procesar, por si la política depende del
      *        tamaño del problema.
      * @return Cantidad de hilos a utilizar (siempre >= 1).

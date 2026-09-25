@@ -4,7 +4,7 @@
 
 #include <vector>
 
-SimulationMetrics SequentialScheme::simulateStep(Flock& flock, const FlockingConfig& config) {
+BoidsMetrics SequentialScheme::simulateStep(Flock& flock, const FlockingConfig& config) {
     Timer timer;
     timer.start();
 
@@ -22,9 +22,14 @@ SimulationMetrics SequentialScheme::simulateStep(Flock& flock, const FlockingCon
     }
 
     const double elapsedMs = timer.stopAndGetMilliseconds();
-    return SimulationMetrics{getSchemeName(), 1u, elapsedMs, flock.getBoidCount()};
+    return BoidsMetrics(getExecutionModel(), getSchemeName(), 1, elapsedMs,
+                        flock.getBoidCount());
 }
 
 std::string SequentialScheme::getSchemeName() const {
     return "Secuencial (baseline)";
+}
+
+execution_model SequentialScheme::getExecutionModel() const {
+    return execution_model::sequential;
 }

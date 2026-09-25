@@ -11,7 +11,7 @@
  * @brief Contenedor del conjunto completo de boids que forman el enjambre.
  *
  * Se diseñó como una clase independiente (y no como un simple
- * std::vector<Boid> suelto en main.cpp) para que la generación aleatoria
+ * std::vector<Boid> en el código cliente) para que la generación aleatoria
  * inicial, el acceso indexado y la aplicación de la integración física
  * tengan un único punto de responsabilidad, reutilizable por todos los
  * esquemas de ejecución.

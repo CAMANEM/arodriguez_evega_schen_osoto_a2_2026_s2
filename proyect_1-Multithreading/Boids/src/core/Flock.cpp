@@ -12,7 +12,7 @@ Flock::Flock(const FlockingConfig& config, unsigned int seed) {
     for (int i = 0; i < config.getBoidCount(); ++i) {
         const Vector2D position(positionXDistribution(randomEngine), positionYDistribution(randomEngine));
         const Vector2D velocity(velocityDistribution(randomEngine), velocityDistribution(randomEngine));
-        boids_.emplace_back(position, velocity);
+        boids_.emplace_back(i, position, velocity);
     }
 }
 

@@ -1,6 +1,8 @@
 #ifndef RENDERER_HPP
 #define RENDERER_HPP
 
+#include <memory>
+
 #include "core/Flock.hpp"
 
 /**
@@ -42,6 +44,10 @@ public:
     virtual void shutdown() = 0;
 };
 
-Renderer* createRaylibRenderer();
+/**
+ * @brief Crea la implementación de Renderer basada en Raylib.
+ * @return Puntero propietario con liberación automática.
+ */
+std::unique_ptr<Renderer> createRaylibRenderer();
 
 #endif // RENDERER_HPP

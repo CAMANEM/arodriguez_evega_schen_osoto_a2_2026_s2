@@ -11,3 +11,7 @@ unsigned int CoarseGrainedScheme::computeThreadCount(const Flock& /*flock*/) con
 std::string CoarseGrainedScheme::getSchemeName() const {
     return "Grano Grueso (hilos tradicionales)";
 }
+
+execution_model CoarseGrainedScheme::getExecutionModel() const {
+    return execution_model::coarse_grained;
+}

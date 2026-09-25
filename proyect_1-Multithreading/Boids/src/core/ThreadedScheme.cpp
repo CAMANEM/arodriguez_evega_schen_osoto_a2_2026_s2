@@ -3,6 +3,7 @@
 #include "core/Timer.hpp"
 
 #include <algorithm>
+#include <functional>
 #include <thread>
 
 void ThreadedScheme::computeForceBlock(const Flock& flock, const FlockingConfig& config,
@@ -13,7 +14,7 @@ void ThreadedScheme::computeForceBlock(const Flock& flock, const FlockingConfig&
     }
 }
 
-SimulationMetrics ThreadedScheme::simulateStep(Flock& flock, const FlockingConfig& config) {
+BoidsMetrics ThreadedScheme::simulateStep(Flock& flock, const FlockingConfig& config) {
     const unsigned int threadCount = std::max(1u, computeThreadCount(flock));
     const int totalBoids = flock.getBoidCount();
     const int boidsPerThread = (totalBoids + static_cast<int>(threadCount) - 1) / static_cast<int>(threadCount);
@@ -50,6 +51,6 @@ SimulationMetrics ThreadedScheme::simulateStep(Flock& flock, const FlockingConfi
     }
 
     const double elapsedMs = timer.stopAndGetMilliseconds();
-    return SimulationMetrics{getSchemeName(), static_cast<unsigned int>(workers.size()), elapsedMs,
-                              totalBoids};
+    return BoidsMetrics(getExecutionModel(), getSchemeName(),
+                        static_cast<int>(workers.size()), elapsedMs, totalBoids);
 }

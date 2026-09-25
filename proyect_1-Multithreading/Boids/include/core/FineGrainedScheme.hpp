@@ -22,7 +22,7 @@
  * Nota (Demostración 2): esta es una ejecución "dummy"/trivial sobre una
  * porción parcial del problema (un subconjunto de boids), tal como lo
  * permite el enunciado para esta etapa. No se usa para la animación
- * visual completa (ver CoarseGrainedScheme/CmpScheme en main.cpp), solo
+ * visual completa (ver CoarseGrainedScheme y CmpScheme), solo
  * para demostrar y medir el modelo de planificación en sí.
  *
  * 
@@ -37,8 +37,9 @@ public:
      */
     explicit FineGrainedScheme(int partialBoidCount = 20);
 
-    SimulationMetrics simulateStep(Flock& flock, const FlockingConfig& config) override;
+    BoidsMetrics simulateStep(Flock& flock, const FlockingConfig& config) override;
     std::string getSchemeName() const override;
+    execution_model getExecutionModel() const override;
 
 private:
     int partialBoidCount_;

@@ -15,3 +15,7 @@ unsigned int SmtScheme::computeThreadCount(const Flock& /*flock*/) const {
 std::string SmtScheme::getSchemeName() const {
     return "SMT (sobre-suscripcion de hilos logicos)";
 }
+
+execution_model SmtScheme::getExecutionModel() const {
+    return execution_model::smt;
+}

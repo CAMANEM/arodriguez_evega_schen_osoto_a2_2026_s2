@@ -3,6 +3,7 @@
 
 #include "core/FlockingConfig.hpp"
 #include "core/Vector2D.hpp"
+#include "object_interface.hpp"
 
 /**
  * @brief Representa un único agente (boid) del enjambre: su posición y
@@ -17,20 +18,34 @@
  *
  * 
  */
-class Boid {
+class Boid : public object_interface {
 public:
     /**
      * @brief Crea un boid con una posición y velocidad iniciales.
+     * @param id Identificador estable dentro del enjambre.
      * @param position Posición inicial en el mundo.
      * @param velocity Velocidad inicial.
+     * @param mass Masa utilizada por el contrato físico compartido.
      */
-    Boid(const Vector2D& position, const Vector2D& velocity);
+    Boid(int id, const Vector2D& position, const Vector2D& velocity, double mass = 1.0);
 
     /** @return Posición actual del boid. */
-    const Vector2D& getPosition() const;
+    Vector2D getPosition() const;
 
     /** @return Velocidad actual del boid. */
-    const Vector2D& getVelocity() const;
+    Vector2D getVelocity() const;
+
+    /**
+     * @brief Integra fuerza, velocidad y posición con Euler semiimplícito.
+     * @param dt Duración positiva del paso; los límites del mundo no se
+     *        aplican en este método genérico.
+     */
+    void update(double dt) override;
+
+    /**
+     * @brief Restablece posición, velocidad, aceleración y fuerza a cero.
+     */
+    void reset() override;
 
     /**
      * @brief Aplica una fuerza de dirección ya calculada: actualiza la
@@ -43,10 +58,6 @@ public:
      *        rapidez máxima, paso de tiempo).
      */
     void integrate(const Vector2D& steeringForce, const FlockingConfig& config);
-
-private:
-    Vector2D position_;
-    Vector2D velocity_;
 };
 
 #endif // BOID_HPP

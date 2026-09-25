@@ -7,7 +7,7 @@ Fine-Grained, Coarse-Grained, SMT, and CMP multithreading.
 
 | Folder | Simulation |
 |---|---|
-| `boids/` | Flocking behavior (separation, alignment, cohesion) |
+| `Boids/` | Flocking behavior (separation, alignment, cohesion) |
 | `n_body/` | Gravitational attraction (universal law) |
 | `liquids/` | Particle-based fluid simulation |
 | `ray_traycing/` | Ray tracing |
@@ -22,10 +22,11 @@ proyect_1-Multithreading/
 │   │   └── metrics_interface.hpp
 │   └── src/
 │       └── metrics_interface.cpp
-├── boids/
+├── Boids/
 │   ├── include/
 │   ├── src/
-│   └── data/
+│   ├── tests/
+│   └── CMakeLists.txt
 ├── n_body/
 │   ├── include/
 │   ├── src/
@@ -38,10 +39,9 @@ proyect_1-Multithreading/
 │   ├── include/
 │   ├── src/
 │   └── data/
-├── docs/
-│   └── Proyectos_Arqui2_Proyecto_Individual_v3.pdf
-└── scripts/
-    └── plot_metrics.py
+└── docs/
+    ├── demo2/
+    └── latex_link.url
 ```
 
 ## Shared Interface
@@ -66,7 +66,7 @@ methods every object must implement.
 | Method | Description |
 |---|---|
 | `update(double dt)` | Integration step — applies stored forces to update acceleration, velocity and position |
-| `reset()` | Restores object to its initial state — required between benchmark runs |
+| `reset()` | Clears or restores state according to the concrete problem |
 
 Force computation is intentionally excluded from the interface. Each problem implements
 its own force function which operates over the full collection of objects and deposits

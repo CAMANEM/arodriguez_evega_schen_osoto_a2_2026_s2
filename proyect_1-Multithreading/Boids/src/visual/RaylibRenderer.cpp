@@ -5,6 +5,9 @@
 #include <cmath>
 #include <vector>
 
+/**
+ * @brief Renderizador concreto que dibuja cada boid como un triángulo.
+ */
 class RaylibRenderer : public Renderer {
 public:
     bool init(int width, int height, const char* title) override {
@@ -99,6 +102,6 @@ private:
     std::vector<float> smoothedVy_;
 };
 
-Renderer* createRaylibRenderer() {
-    return new RaylibRenderer();
+std::unique_ptr<Renderer> createRaylibRenderer() {
+    return std::make_unique<RaylibRenderer>();
 }

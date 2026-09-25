@@ -6,10 +6,10 @@
 #include <vector>
 
 FineGrainedScheme::FineGrainedScheme(int partialBoidCount)
-    : partialBoidCount_(partialBoidCount) {
+    : partialBoidCount_(std::max(0, partialBoidCount)) {
 }
 
-SimulationMetrics FineGrainedScheme::simulateStep(Flock& flock, const FlockingConfig& config) {
+BoidsMetrics FineGrainedScheme::simulateStep(Flock& flock, const FlockingConfig& config) {
     Timer timer;
     timer.start();
 
@@ -46,10 +46,14 @@ SimulationMetrics FineGrainedScheme::simulateStep(Flock& flock, const FlockingCo
     }
 
     const double elapsedMs = timer.stopAndGetMilliseconds();
-    return SimulationMetrics{getSchemeName(), static_cast<unsigned int>(boidsToProcess), elapsedMs,
-                              boidsToProcess};
+    return BoidsMetrics(getExecutionModel(), getSchemeName(), boidsToProcess, elapsedMs,
+                        boidsToProcess, true);
 }
 
 std::string FineGrainedScheme::getSchemeName() const {
     return "Grano Fino (round-robin por vecino, parcial)";
+}
+
+execution_model FineGrainedScheme::getExecutionModel() const {
+    return execution_model::fine_grained;
 }

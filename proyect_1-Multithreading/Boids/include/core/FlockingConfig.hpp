@@ -38,16 +38,27 @@ public:
                    double separationWeight, double alignmentWeight, double cohesionWeight,
                    double deltaTime);
 
+    /** @return Cantidad de boids configurada. */
     int getBoidCount() const;
+    /** @return Ancho del mundo simulado. */
     double getWorldWidth() const;
+    /** @return Alto del mundo simulado. */
     double getWorldHeight() const;
+    /** @return Radio usado para alineación y cohesión. */
     double getPerceptionRadius() const;
+    /** @return Radio usado para separación. */
     double getSeparationRadius() const;
+    /** @return Rapidez máxima de un boid. */
     double getMaxSpeed() const;
+    /** @return Magnitud máxima de la dirección aplicada. */
     double getMaxForce() const;
+    /** @return Peso de separación. */
     double getSeparationWeight() const;
+    /** @return Peso de alineación. */
     double getAlignmentWeight() const;
+    /** @return Peso de cohesión. */
     double getCohesionWeight() const;
+    /** @return Duración de un paso de integración. */
     double getDeltaTime() const;
 
 private:

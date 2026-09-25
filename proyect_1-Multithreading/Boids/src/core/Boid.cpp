@@ -18,21 +18,50 @@ double wrapCoordinate(double value, double limit) {
 
 } // namespace
 
-Boid::Boid(const Vector2D& position, const Vector2D& velocity)
-    : position_(position), velocity_(velocity) {
+Boid::Boid(int id, const Vector2D& position, const Vector2D& velocity, double mass)
+    : object_interface(id, mass) {
+    set_position(position.getX(), position.getY());
+    set_velocity(velocity.getX(), velocity.getY());
 }
 
-const Vector2D& Boid::getPosition() const {
-    return position_;
+Vector2D Boid::getPosition() const {
+    return Vector2D(pos_x, pos_y);
 }
 
-const Vector2D& Boid::getVelocity() const {
-    return velocity_;
+Vector2D Boid::getVelocity() const {
+    return Vector2D(speed_x, speed_y);
+}
+
+void Boid::update(double dt) {
+    if (dt <= 0.0 || mass <= 0.0) {
+        return;
+    }
+
+    acc_x = force_x / mass;
+    acc_y = force_y / mass;
+    speed_x += acc_x * dt;
+    speed_y += acc_y * dt;
+    pos_x += speed_x * dt;
+    pos_y += speed_y * dt;
+}
+
+void Boid::reset() {
+    set_position(0.0, 0.0);
+    set_velocity(0.0, 0.0);
+    set_acceleration(0.0, 0.0);
+    set_force(0.0, 0.0);
 }
 
 void Boid::integrate(const Vector2D& steeringForce, const FlockingConfig& config) {
-    velocity_ = (velocity_ + steeringForce).limited(config.getMaxSpeed());
-    position_ = position_ + velocity_ * config.getDeltaTime();
-    position_ = Vector2D(wrapCoordinate(position_.getX(), config.getWorldWidth()),
-                          wrapCoordinate(position_.getY(), config.getWorldHeight()));
+    const Vector2D previousPosition = getPosition();
+    set_force(steeringForce.getX(), steeringForce.getY());
+    update(config.getDeltaTime());
+
+    const Vector2D nextVelocity = getVelocity().limited(config.getMaxSpeed());
+    set_velocity(nextVelocity.getX(), nextVelocity.getY());
+
+    const Vector2D nextPosition =
+        previousPosition + nextVelocity * config.getDeltaTime();
+    set_position(wrapCoordinate(nextPosition.getX(), config.getWorldWidth()),
+                 wrapCoordinate(nextPosition.getY(), config.getWorldHeight()));
 }

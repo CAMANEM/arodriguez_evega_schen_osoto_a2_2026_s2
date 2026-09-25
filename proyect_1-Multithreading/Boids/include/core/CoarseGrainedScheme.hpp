@@ -23,6 +23,7 @@ public:
     explicit CoarseGrainedScheme(unsigned int threadCount = 4);
 
     std::string getSchemeName() const override;
+    execution_model getExecutionModel() const override;
 
 protected:
     unsigned int computeThreadCount(const Flock& flock) const override;
