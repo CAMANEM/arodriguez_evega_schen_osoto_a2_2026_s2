@@ -105,7 +105,7 @@ extras must be updated together with the common times.
 
 | Attribute | Type | Description |
 |---|---|---|
-| `model` | `execution_model` | Sequential, fine-grained, or coarse-grained |
+| `model` | `execution_model` | Sequential, fine-grained, coarse-grained, SMT, or CMP |
 | `n_workers` | `int` | Threads or processes used in this configuration |
 | `sequential_time` | `double` | Baseline wall time for speedup (`T_seq`) |
 | `run_times` | `std::vector<double>` | Wall time of each repetition (seconds) |
