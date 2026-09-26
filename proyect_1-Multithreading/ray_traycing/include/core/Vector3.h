@@ -1,37 +1,47 @@
+/**
+ * @file Vector3.h
+ * @brief Operaciones básicas para vectores, puntos y colores RGB 3D.
+ */
 #ifndef VECTOR3_H
 #define VECTOR3_H
 
 #include <cmath>
 #include <iostream>
 
-// Vector3: Representa un vector 3D con operaciones matemáticas básicas.
-// Utilizado para coordenadas 3D, colores RGB y direcciones.
+/** @brief Vector tridimensional usado también para puntos y colores RGB. */
 struct Vector3 {
     double x, y, z;
 
-    Vector3() : x(0), y(0), z(0) {}  // Constructor por defecto (origen)
-    Vector3(double x, double y, double z) : x(x), y(y), z(z) {}  // Constructor con valores
+    /** @brief Construye el vector cero. */
+    Vector3() : x(0), y(0), z(0) {}
+    /** @brief Construye un vector con componentes explícitas. */
+    Vector3(double x, double y, double z) : x(x), y(y), z(z) {}
 
-    // Operaciones vectoriales de suma y resta
+    /** @brief Suma componentes de dos vectores. */
     Vector3 operator+(const Vector3& v) const { return Vector3(x + v.x, y + v.y, z + v.z); }
+    /** @brief Resta componentes de dos vectores. */
     Vector3 operator-(const Vector3& v) const { return Vector3(x - v.x, y - v.y, z - v.z); }
     
-    // Escalado: multiplicación/división por escalar
+    /** @brief Multiplica el vector por un escalar. */
     Vector3 operator*(double s) const { return Vector3(x * s, y * s, z * s); }
+    /** @brief Divide el vector por un escalar no nulo. */
     Vector3 operator/(double s) const { return Vector3(x / s, y / s, z / s); }
     
-    // dot(): Producto punto - mide similitud y ángulo entre vectores
+    /** @brief Calcula el producto punto. */
     double dot(const Vector3& v) const { return x * v.x + y * v.y + z * v.z; }
     
-    // cross(): Producto cruz - genera vector perpendicular a ambos
+    /** @brief Calcula el producto cruz, perpendicular a ambos vectores. */
     Vector3 cross(const Vector3& v) const {
         return Vector3(y * v.z - z * v.y, z * v.x - x * v.z, x * v.y - y * v.x);
     }
     
-    // length(): Longitud (magnitud) del vector
+    /** @return Magnitud euclidiana del vector. */
     double length() const { return sqrt(dot(*this)); }
     
-    // normalize(): Retorna vector con longitud 1 (mantiene dirección)
+    /**
+     * @return Vector unitario con la misma dirección.
+     * @pre La magnitud debe ser distinta de cero.
+     */
     Vector3 normalize() const { return *this / length(); }
 };
 

@@ -1,3 +1,7 @@
+/**
+ * @file SequentialRenderer.h
+ * @brief Baseline secuencial del contrato IRenderer.
+ */
 #ifndef SEQUENTIAL_RENDERER_H
 #define SEQUENTIAL_RENDERER_H
 
@@ -9,6 +13,7 @@
 #include "SchedulerLogger.h"
 #include <vector>
 
+/** @brief Renderer de referencia de un worker, usado como baseline secuencial. */
 // SequentialRenderer: modelo de referencia sin multithreading (baseline).
 //
 // Renderiza todos los pixels en un solo hilo, fila por fila (row-major).
@@ -27,23 +32,36 @@ private:
     SchedulerLogger logger_;          // Traza ciclo-a-ciclo (activar con set_verbose)
 
 public:
+    /** @brief Crea la escena y el modelo de caché secuencial. */
     SequentialRenderer();
 
     // Actualiza la posición de la cámara antes de render_frame().
     // GenericRunner la llama una vez por frame con la posición de la órbita.
+    /** @param pos Nueva posición de cámara para los píxeles del siguiente frame. */
     void set_camera_pos(const Vector3& pos) override { camera_pos_ = pos; }
 
     // Habilita la traza del scheduler para los primeros `cycles` ciclos de pipeline.
+    /** @param cycles Ciclos iniciales que se imprimirán; cero desactiva la traza. */
     void set_verbose(int cycles) override { logger_.set_max_cycles(cycles); }
 
     // Proyecta el pixel (x, y) usando make_ray con look-at desde camera_pos_.
+    /**
+     * @brief Calcula un píxel con la cámara y carga actuales.
+     * @param x Coordenada horizontal.
+     * @param y Coordenada vertical.
+     * @return Color RGB del píxel.
+     */
     Vector3 render_pixel(int x, int y) const {
         return compute_pixel(scene, x, y, camera_pos_, workload_);
     }
 
+    /** @return Frame renderizado row-major y estado virtual actualizado. */
     std::vector<Vector3> render_frame() override;
+    /** @return Identificador `sequential`. */
     std::string get_model_name() const override { return "sequential"; }
+    /** @return Tiempo virtual del frame, en nanosegundos. */
     long long get_virtual_time_ns() const override { return virtual_time_ns_; }
+    /** @return Misses de caché del último frame. */
     int get_total_stalls() const override { return stall_count_; }
 };
 

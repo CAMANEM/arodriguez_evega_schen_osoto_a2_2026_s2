@@ -1,3 +1,7 @@
+/**
+ * @file Metrics.h
+ * @brief Estructuras con métricas virtuales y estadísticas por worker.
+ */
 #ifndef METRICS_H
 #define METRICS_H
 
@@ -5,32 +9,30 @@
 
 namespace trace {
 
-// ThreadMetrics: Estadísticas por hilo en modelos paralelos
+/** @brief Contadores de un hilo o contexto durante el último frame. */
 struct ThreadMetrics {
-    int thread_id = 0;
-    long long nops_count = 0;           // Total de NOPs ejecutados
-    double nop_time_ns = 0.0;           // Tiempo total en NOPs (nanosegundos)
-    int cache_misses = 0;               // Total de cache misses
-    long long virtual_time_ns = 0LL;    // Tiempo virtual acumulado (reloj simulado)
+    int thread_id = 0;                  /**< Índice del worker. */
+    long long nops_count = 0;           /**< NOPs simulados ejecutados. */
+    double nop_time_ns = 0.0;           /**< Tiempo acumulado en NOPs, en ns. */
+    int cache_misses = 0;               /**< Misses de caché observados. */
+    long long virtual_time_ns = 0LL;    /**< Tiempo virtual acumulado, en ns. */
 };
 
-// Metrics: Estadísticas globales de ejecución
+/** @brief Resumen global de una campaña de renderizado. */
 struct Metrics {
-    int runs = 0;
-    double total = 0.0;
-    double avg = 0.0;
-    double min = 0.0;
-    double max = 0.0;
-    double stddev = 0.0;
-    std::vector<double> times;
+    int runs = 0;                   /**< Cantidad de ejecuciones. */
+    double total = 0.0;             /**< Suma de tiempos de pared. */
+    double avg = 0.0;               /**< Tiempo de pared promedio. */
+    double min = 0.0;               /**< Menor tiempo de pared. */
+    double max = 0.0;               /**< Mayor tiempo de pared. */
+    double stddev = 0.0;             /**< Desviación estándar de la muestra. */
+    std::vector<double> times;       /**< Tiempos de pared por ejecución, en s. */
 
-    // Reloj virtual: tiempo simulado por el modelo arquitectónico (independiente del OS)
-    long long virtual_time_ns = 0LL;       // Promedio de tiempo virtual (ns)
-    std::vector<long long> virtual_times;  // Tiempo virtual por ejecución
+    long long virtual_time_ns = 0LL;       /**< Tiempo virtual promedio, en ns. */
+    std::vector<long long> virtual_times;  /**< Tiempo virtual por ejecución, en ns. */
 
-    // Estadísticas por thread (para modelos paralelos)
-    std::vector<ThreadMetrics> thread_metrics;
-    std::vector<int> stall_counts;  // stalls (cache misses) por ejecución
+    std::vector<ThreadMetrics> thread_metrics; /**< Métricas por worker. */
+    std::vector<int> stall_counts;              /**< Misses por ejecución. */
 };
 
 } // namespace trace

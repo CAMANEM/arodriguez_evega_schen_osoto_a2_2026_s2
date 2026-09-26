@@ -1,3 +1,7 @@
+/**
+ * @file Timer.cpp
+ * @brief Implementación del cronómetro de pared usado por el benchmark.
+ */
 #include "core/Timer.hpp"
 
 void Timer::start() {

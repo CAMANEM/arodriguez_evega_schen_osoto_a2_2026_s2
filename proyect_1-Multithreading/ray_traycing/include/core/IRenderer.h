@@ -1,3 +1,7 @@
+/**
+ * @file IRenderer.h
+ * @brief Contrato común para renderers con distintas políticas de ejecución.
+ */
 #ifndef IRENDERER_H
 #define IRENDERER_H
 
@@ -7,49 +11,52 @@
 #include "Metrics.h"
 #include "Workload.h"
 
-// IRenderer: Interfaz abstracta para renderizadores.
-//
-// Define el contrato que todos los modelos de ejecución deben cumplir.
-// Permite abstraer detalles de implementación (secuencial, FGMT, CGMT, etc.)
-// y habilita el uso de Factory Pattern para creación dinámica de renderers.
+/**
+ * @brief Interfaz polimórfica para renderizar frames con cualquier esquema.
+ *
+ * Mantiene los clientes independientes de las implementaciones secuencial,
+ * FGMT, CGMT, SMT y CMP.
+ */
 class IRenderer {
 public:
+    /** @brief Destructor virtual para destruir implementaciones por interfaz. */
     virtual ~IRenderer() = default;
 
+    /** @brief Selecciona la carga que usará cada píxel. */
     void set_workload(Workload workload) { workload_ = workload; }
+    /** @return Carga configurada actualmente. */
     Workload get_workload() const { return workload_; }
 
-    // Renderiza un frame completo y retorna el buffer de píxeles.
-    // Return: Vector de colores (Vector3) con dimensiones IMAGE_WIDTH × IMAGE_HEIGHT.
+    /** @brief Renderiza un frame y devuelve IMAGE_WIDTH × IMAGE_HEIGHT colores row-major. */
     virtual std::vector<Vector3> render_frame() = 0;
 
-    // Retorna estadísticas por thread (vacío para modelos sin threads).
+    /** @return Métricas por worker; vacío si el modelo no las recopila. */
     virtual const std::vector<trace::ThreadMetrics>& get_thread_metrics() const {
         static const std::vector<trace::ThreadMetrics> empty;
         return empty;
     }
 
-    // Retorna el tiempo virtual simulado del último render_frame() (nanosegundos).
-    // Cada modelo calcula este valor según su arquitectura:
-    //   - Sequential: Σ(PIXEL_QUANTUM + CACHE_MISS_PENALTY × misses)
-    //   - FGMT:       Σ(virtual_time por thread)    [1 pipeline, round-robin + stalls diferidos]
-    //   - CGMT:       Σ(virtual_time por thread)    [ejecución serial + stalls ocultos]
+    /** @return Tiempo virtual del último frame en nanosegundos; no es tiempo de pared. */
     virtual long long get_virtual_time_ns() const { return 0LL; }
 
-    // Retorna el total de stalls (cache misses) del último render_frame().
+    /** @return Misses de caché del último frame. */
     virtual int get_total_stalls() const { return 0; }
 
-    // Retorna el nombre del modelo para debugging/logging.
+    /** @return Identificador estable del modelo. */
     virtual std::string get_model_name() const = 0;
 
-    // Establece la posición de la cámara antes de llamar a render_frame().
-    // Implementación por defecto no-op: modelos que aún no soporten animación
-    // de cámara simplemente ignoran esta llamada.
+    /**
+     * @brief Establece la posición de cámara para el siguiente frame.
+     * @param pos Posición de cámara en coordenadas del mundo.
+     * @note Implementación opcional; por defecto no modifica el renderer.
+     */
     virtual void set_camera_pos(const Vector3& /*pos*/) {}
 
-    // Habilita la traza ciclo-a-ciclo del scheduler para los primeros `cycles` ciclos.
-    // Implementación por defecto no-op; cada modelo sobreescribe con su SchedulerLogger.
-    // Uso: ./build/raytracer --model <modelo> --verbose N --runs 1
+    /**
+     * @brief Habilita logging del scheduler para los primeros ciclos.
+     * @param cycles Cantidad de ciclos a registrar; cero desactiva el logging.
+     * @note Implementación opcional; por defecto no hace nada.
+     */
     virtual void set_verbose(int /*cycles*/) {}
 
 protected:

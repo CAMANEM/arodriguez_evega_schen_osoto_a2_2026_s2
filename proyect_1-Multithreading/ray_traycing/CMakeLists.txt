@@ -9,6 +9,7 @@ find_package(Threads REQUIRED)
 
 add_library(raytracing_core
     src/core/CMPRenderer.cpp
+    src/core/CameraOrbit.cpp
     src/core/CoarseRenderer.cpp
     src/core/FinegrainedRenderer.cpp
     src/core/SMTRenderer.cpp

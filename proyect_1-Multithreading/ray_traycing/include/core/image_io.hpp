@@ -1,3 +1,7 @@
+/**
+ * @file image_io.hpp
+ * @brief Escritura de buffers de píxeles en formato Netpbm PPM P3.
+ */
 #pragma once
 
 #include "raytracing_config.hpp"
@@ -9,6 +13,13 @@
 #include <string>
 #include <vector>
 
+/**
+ * @brief Escribe un frame RGB como archivo PPM de texto.
+ * @param path Ruta destino; crea los directorios padre si hacen falta.
+ * @param pixels Buffer row-major de IMAGE_WIDTH × IMAGE_HEIGHT colores.
+ * @throws std::invalid_argument Si el buffer no tiene el tamaño configurado.
+ * @throws std::runtime_error Si no se puede abrir el archivo de salida.
+ */
 inline void write_ppm(const std::string& path, const std::vector<Vector3>& pixels) {
     const std::size_t expected = static_cast<std::size_t>(constants::IMAGE_WIDTH) *
                                  constants::IMAGE_HEIGHT;

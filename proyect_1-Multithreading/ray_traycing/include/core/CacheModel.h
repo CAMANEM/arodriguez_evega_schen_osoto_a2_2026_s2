@@ -1,17 +1,19 @@
+/**
+ * @file CacheModel.h
+ * @brief Modelo probabilístico reproducible de hits y misses por píxel.
+ */
 #ifndef CACHE_MODEL_H
 #define CACHE_MODEL_H
 
 #include <cmath>
 #include <random>
 
-// CacheModel: Simula comportamiento de cache con localidad espacial.
-// Modela hits/misses para píxeles basándose en:
-//   - Proximidad espacial (píxeles cercanos reutilizan cache)
-//   - Tamaño de cache (probabilidad inversamente proporcional a CACHE_SIZE)
-//   - Distancia desde último miss (recuperación progresiva)
-//
-// Uso: Consultar is_cache_miss(x, y) para cada píxel.
-//      Retorna true si hay miss → ejecutar NOPs de penalización.
+/**
+ * @brief Simula misses de caché con localidad espacial y semilla reproducible.
+ *
+ * La probabilidad base depende del tamaño configurado y se reduce para píxeles
+ * próximos al último miss. Cada contexto debe usar su propia instancia.
+ */
 class CacheModel {
 private:
     int cache_size;                // Bytes de cache disponible
@@ -20,19 +22,23 @@ private:
     std::uniform_real_distribution<double> dist;
 
 public:
-    // Constructor: inicializar con tamaño de cache y semilla opcional.
-    // Cache típico L1: 32-64 KB. Ajustar según modelo deseado.
-    // Semilla fija (42) por defecto → resultados deterministas y reproducibles:
-    // misma escena + misma cámara = mismo patrón de cache misses en cada ejecución.
-    // Para threads distintos pasar seed = BASE_SEED + thread_id.
+    /**
+     * @brief Crea un modelo de caché con generador aleatorio independiente.
+     * @param cache_size Capacidad simulada en bytes.
+     * @param seed Semilla del generador; usar una distinta por contexto.
+     * @pre cache_size debe ser positivo.
+     */
     CacheModel(int cache_size = 32768, uint32_t seed = 42u)
         : cache_size(cache_size), last_miss_x(0), last_miss_y(0), dist(0.0, 1.0) {
         rng.seed(seed);
     }
 
-    // is_cache_miss(): Determinar si hay miss en coordenada (x, y).
-    // Probabilidad base = 1.0 / (cache_size / 64)  [64 bytes por píxel típico]
-    // Ajustado por distancia: píxeles muy cercanos al último miss tienen menor prob.
+    /**
+     * @brief Decide si acceder al píxel indicado produce un miss.
+     * @param x Coordenada horizontal del píxel.
+     * @param y Coordenada vertical del píxel.
+     * @return true si ocurre un miss; false si el acceso es un hit.
+     */
     bool is_cache_miss(int x, int y) {
         // Probabilidad base inversamente proporcional al tamaño de cache
         double base_prob = 64.0 / cache_size;  // ~0.002 para 32KB cache
@@ -60,14 +66,15 @@ public:
         return is_miss;
     }
 
-    // reset(): Reiniciar modelo para nueva frame
+    /** @brief Reinicia la localidad espacial al comenzar un frame. */
     void reset() {
         last_miss_x = 0;
         last_miss_y = 0;
     }
 
-    // Métodos para diagnosticar cache behavior (opcional)
+    /** @return Capacidad simulada de caché en bytes. */
     int get_cache_size() const { return cache_size; }
+    /** @param size Nueva capacidad simulada, en bytes. */
     void set_cache_size(int size) { cache_size = size; }
 };
 

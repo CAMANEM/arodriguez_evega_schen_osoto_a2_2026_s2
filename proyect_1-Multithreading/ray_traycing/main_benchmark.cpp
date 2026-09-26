@@ -1,7 +1,12 @@
+/**
+ * @file main_benchmark.cpp
+ * @brief Ejecuta campañas de benchmark y exporta las métricas de cada modelo.
+ */
 #include "raytracing_config.hpp"
 #include "IRenderer.h"
 #include "RendererFactory.h"
 #include "metrics_interface.hpp"
+#include "core/CameraOrbit.h"
 #include "core/Timer.hpp"
 #include <filesystem>
 #include <fstream>
@@ -12,6 +17,7 @@
 #include <string>
 #include <vector>
 
+/** @brief Nombre, etiqueta estadística y cantidad de workers de un modelo. */
 struct ModelConfig {
 	const char* name;
 	execution_model model;
@@ -26,16 +32,31 @@ static const ModelConfig models[] = {
 	{"cmp", execution_model::cmp, constants::CMP_NUM_CORES}
 };
 
+/**
+ * @brief Busca la configuración de un modelo registrado.
+ * @param name Nombre CLI del modelo.
+ * @return Referencia a su configuración estática.
+ * @throws std::invalid_argument Si el modelo no está registrado.
+ */
 static const ModelConfig& find_model(const std::string& name) {
 	for (const ModelConfig& model : models)
 		if (name == model.name) return model;
 	throw std::invalid_argument("unknown model: " + name);
 }
 
+/** @brief Convierte la carga seleccionada al nombre usado en el CSV. */
 static std::string workload_name(Workload workload) {
 	return workload == Workload::dummy ? "dummy" : "raytracing";
 }
 
+/**
+ * @brief Renderiza varias repeticiones de un modelo y recoge tiempos de pared.
+ * @param config Modelo y cantidad de workers.
+ * @param runs Número de repeticiones.
+ * @param workload Carga aplicada a cada píxel.
+ * @param last_frame Si no es nulo, recibe el último frame producido.
+ * @return Métricas de las muestras renderizadas, en segundos.
+ */
 static metrics_interface run_model(const ModelConfig& config, int runs,
 								   Workload workload, std::vector<Vector3>* last_frame) {
 	metrics_interface metrics(config.model, config.workers);
@@ -53,6 +74,13 @@ static metrics_interface run_model(const ModelConfig& config, int runs,
 	return metrics;
 }
 
+/**
+ * @brief Escribe estadísticas agregadas de los modelos en un CSV.
+ * @param path Ruta de salida; se crean sus directorios padre.
+ * @param results Configuraciones y métricas que se exportan.
+ * @param workload Carga asociada a toda la campaña.
+ * @throws std::runtime_error Si no se puede abrir el archivo.
+ */
 static void write_csv(const std::string& path,
 					  const std::vector<std::pair<const ModelConfig*, metrics_interface>>& results,
 					  Workload workload) {
@@ -76,18 +104,25 @@ static void write_csv(const std::string& path,
 	}
 }
 
+/**
+ * @brief Analiza opciones CLI, mide modelos y opcionalmente genera el GIF orbital.
+ * @param argc Cantidad de argumentos de la línea de comandos.
+ * @param argv Argumentos recibidos por el proceso.
+ * @return 0 si la campaña termina correctamente; 1 si ocurre un error.
+ */
 int main(int argc, char* argv[]) {
 	try {
 		int runs = 5;
 		std::string selected_model = "all";
-		std::string output = "results/benchmark.csv";
+		std::string output = constants::RESULTS_DIR + "/benchmark.csv";
 		Workload workload = Workload::raytracing;
+		bool generate_gif = true;
 
 		for (int i = 1; i < argc; ++i) {
 			const std::string argument = argv[i];
 			if (argument == "--help" || argument == "-h") {
 				std::cout << "Usage: raytracing_benchmark [--model all|sequential|fgmt|cgmt|smt|cmp] "
-							 "[--workload raytracing|dummy] [--runs N] [--output CSV]\n";
+							 "[--workload raytracing|dummy] [--runs N] [--output CSV] [--no-gif]\n";
 				return 0;
 			} else if (argument == "--model" && i + 1 < argc) {
 				selected_model = argv[++i];
@@ -101,6 +136,8 @@ int main(int argc, char* argv[]) {
 				if (runs < 1) throw std::invalid_argument("runs must be positive");
 			} else if (argument == "--output" && i + 1 < argc) {
 				output = argv[++i];
+			} else if (argument == "--no-gif") {
+				generate_gif = false;
 			} else {
 				throw std::invalid_argument("unknown or incomplete argument: " + argument);
 			}
@@ -138,6 +175,10 @@ int main(int argc, char* argv[]) {
 					  << std::setw(14) << metrics.efficiency() << '\n';
 		}
 		std::cout << "CSV: " << output << '\n';
+		if (generate_gif) {
+			render_camera_orbit_gif();
+			std::cout << "GIF: " << constants::CAMERA_ORBIT_GIF_PATH << '\n';
+		}
 		return 0;
 	} catch (const std::exception& error) {
 		std::cerr << "Error: " << error.what() << '\n';

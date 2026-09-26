@@ -1,3 +1,7 @@
+/**
+ * @file Ray.h
+ * @brief Rayos normalizados y proyección de coordenadas de píxel a escena.
+ */
 #ifndef RAY_H
 #define RAY_H
 
@@ -5,26 +9,25 @@
 #include "raytracing_config.hpp"
 #include <cmath>
 
-// Ray: Representa un rayo de luz en el espacio 3D.
-// Almacena origen y dirección normalizada para ray tracing.
+/** @brief Rayo 3D definido por un origen y una dirección unitaria. */
 struct Ray {
     Vector3 origin;      // Punto donde inicia el rayo
     Vector3 direction;   // Dirección del rayo (normalizada)
 
-    // Constructor: inicializa rayo con origen y dirección.
-    // La dirección se normaliza automáticamente.
+    /**
+     * @brief Construye un rayo y normaliza su dirección.
+     * @param o Origen del rayo.
+     * @param d Dirección antes de normalizar.
+     */
     Ray(const Vector3& o, const Vector3& d) : origin(o), direction(d.normalize()) {}
 };
 
-// make_ray: Convierte coordenadas de píxel a un rayo orientado al espacio NDC [-1, 1].
-// Aplica corrección de relación de aspecto (aspect ratio) para que los píxeles
-// no aparezcan deformados cuando IMAGE_WIDTH != IMAGE_HEIGHT.
-//
-// Función libre compartida por todos los renderers (Sequential, FGMT, CGMT) para
-// evitar duplicación de la misma lógica de proyección en cada implementación.
-//
-// Param: x, y — Coordenadas del píxel en espacio de imagen [0..WIDTH, 0..HEIGHT].
-// Return: Ray desde el origen con dirección al píxel correspondiente.
+/**
+ * @brief Proyecta un píxel desde la cámara inicial al espacio de la escena.
+ * @param x Coordenada horizontal del píxel.
+ * @param y Coordenada vertical del píxel.
+ * @return Rayo normalizado con corrección de relación de aspecto.
+ */
 inline Ray make_ray(int x, int y) {
     double u      = (2.0 * x / constants::IMAGE_WIDTH)  - 1.0;
     double v      = 1.0 - (2.0 * y / constants::IMAGE_HEIGHT);
@@ -34,14 +37,14 @@ inline Ray make_ray(int x, int y) {
     return Ray(origin, direction);
 }
 
-// make_ray con cámara arbitraria: proyecta el pixel (x, y) usando un modelo look-at.
-// La cámara en cam_pos apunta siempre al centro de la escena (SCENE_CENTER_*).
-//
-// Verificación: con cam_pos=(0,0,0) produce la misma dirección que make_ray(x,y)
-// porque look-at desde el origen hacia (0,0,-5) reproduce el modelo NDC original.
-//
-// Param: x, y   — Coordenadas del pixel.
-//        cam_pos — Posición de la cámara en el espacio 3D.
+/**
+ * @brief Proyecta un píxel usando una cámara orientada al centro de la escena.
+ * @param x Coordenada horizontal del píxel.
+ * @param y Coordenada vertical del píxel.
+ * @param cam_pos Posición actual de la cámara.
+ * @return Rayo normalizado construido con la base look-at de la cámara.
+ * @note En la posición inicial genera la misma proyección que la sobrecarga simple.
+ */
 inline Ray make_ray(int x, int y, const Vector3& cam_pos) {
     using namespace constants;
     Vector3 scene_center(SCENE_CENTER_X, SCENE_CENTER_Y, SCENE_CENTER_Z);

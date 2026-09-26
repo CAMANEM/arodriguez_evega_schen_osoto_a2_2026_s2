@@ -1,3 +1,7 @@
+/**
+ * @file SMTRenderer.cpp
+ * @brief Simulación por ciclos de issue SMT con contextos virtuales.
+ */
 #include "SMTRenderer.h"
 #include "raytracing_config.hpp"
 #include "Ray.h"
@@ -8,6 +12,7 @@
 using namespace constants;
 using namespace trace;
 
+/** @brief Crea los contextos SMT y divide el frame entre sus rangos. */
 SMTRenderer::SMTRenderer()
     : scene_(), frame_(IMAGE_WIDTH * IMAGE_HEIGHT), global_clock_(0)
 {
@@ -38,6 +43,14 @@ SMTRenderer::SMTRenderer()
 
 // render_pixel: función auxiliar que produce el color de un píxel completo.
 // Sin descomposición en etapas: correctness garantizado (equivalente a Scene::trace()).
+/**
+ * @brief Traza un rayo y busca el color de la esfera visible más cercana.
+ * @param scene Escena intersectada.
+ * @param x Coordenada horizontal del píxel.
+ * @param y Coordenada vertical del píxel.
+ * @param cam Posición de cámara.
+ * @return Color de la intersección más cercana o del fondo.
+ */
 static Vector3 render_raytraced_pixel(const Scene& scene, int x, int y, const Vector3& cam) {
     Ray    r    = make_ray(x, y, cam);
     double tmin = std::numeric_limits<double>::infinity();
@@ -68,6 +81,10 @@ static Vector3 render_raytraced_pixel(const Scene& scene, int x, int y, const Ve
 //
 // De esta forma la ventana de emisión W=2 siempre se llena con trabajo real
 // mientras existan threads listos, ocultando latencias de cache de forma nativa.
+/**
+ * @brief Simula slots SMT, latencias de caché y despacho de hasta W contextos.
+ * @return Frame row-major y estado virtual actualizado.
+ */
 std::vector<Vector3> SMTRenderer::render_frame() {
     const int context_count = static_cast<int>(tasks_.size());
     reset_thread_stats(thread_stats_, cache_models_);

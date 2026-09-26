@@ -1,9 +1,14 @@
+/**
+ * @file SequentialRenderer.cpp
+ * @brief Implementación del baseline que renderiza los píxeles en orden.
+ */
 #include "SequentialRenderer.h"
 #include "raytracing_config.hpp"
 #include "Workload.h"
 
 using namespace constants;
 
+/** @brief Inicializa escena y caché con la capacidad configurada. */
 SequentialRenderer::SequentialRenderer() : scene(), cache(CACHE_SIZE) {}
 
 // render_frame: Renderiza todos los píxeles en orden row-major con un solo thread.
@@ -12,6 +17,10 @@ SequentialRenderer::SequentialRenderer() : scene(), cache(CACHE_SIZE) {}
 // porque no existe otro contexto que pueda tomar el pipeline mientras la CPU
 // espera el dato de memoria. Esta penalización íntegra es precisamente lo que
 // los modelos multithreaded (FGMT, CGMT, SMT) intentan ocultar o amortizar.
+/**
+ * @brief Renderiza un frame row-major y acumula los stalls sin ocultamiento.
+ * @return Buffer de colores del frame completo.
+ */
 std::vector<Vector3> SequentialRenderer::render_frame() {
     std::vector<Vector3> frame(IMAGE_WIDTH * IMAGE_HEIGHT);
     virtual_time_ns_ = 0LL;

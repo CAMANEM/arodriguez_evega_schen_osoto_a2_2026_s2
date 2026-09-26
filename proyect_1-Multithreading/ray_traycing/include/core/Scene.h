@@ -1,3 +1,7 @@
+/**
+ * @file Scene.h
+ * @brief Escena de ray tracing y búsqueda de intersecciones cercanas.
+ */
 #ifndef SCENE_H
 #define SCENE_H
 
@@ -16,6 +20,10 @@
 // Notas:
 //   - Implementa algoritmo naive de ray tracing (complejidad O(n) por rayo).
 //   - Para futuras extensiones: agregar árboles BVH o estructuras espaciales.
+/**
+ * @brief Colección de esferas que define la geometría renderizable.
+ * @note La búsqueda recorre todos los objetos, con coste O(n) por rayo.
+ */
 struct Scene {
     std::vector<Sphere> spheres;  // Lista de objetos en la escena
 
@@ -36,6 +44,11 @@ struct Scene {
     //   2. Calcular intersección rayo-esfera.
     //   3. Guardar la intersección más cercana (menor t).
     //   4. Retornar color del objeto más cercano.
+    /**
+     * @brief Devuelve el color del objeto intersectado más cercano.
+     * @param ray Rayo que se consulta.
+     * @return Color RGB normalizado o BACKGROUND_COLOR si no hay intersección.
+     */
     Vector3 trace(const Ray& ray) const {
         double t_min = INFINITY;
         Vector3 color = constants::BACKGROUND_COLOR;

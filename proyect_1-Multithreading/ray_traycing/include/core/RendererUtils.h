@@ -1,3 +1,7 @@
+/**
+ * @file RendererUtils.h
+ * @brief Operaciones compartidas para reiniciar y sumar métricas de workers.
+ */
 #ifndef RENDERER_UTILS_H
 #define RENDERER_UTILS_H
 
@@ -16,6 +20,12 @@ namespace trace {
 // la constante (NUM_THREADS vs CMP_NUM_CORES — ambas son 4, pero conceptualmente
 // distintas).
 // CoarseRenderer adicionalmente reinicia thread_done[] (scheduler-specific, fuera de aquí).
+/**
+ * @brief Reinicia contadores y cachés al comenzar un nuevo frame.
+ * @param stats Métricas por worker que se ponen a cero.
+ * @param caches Modelos de caché cuyo estado espacial se reinicia.
+ * @note Ambos vectores deben tener el mismo tamaño.
+ */
 inline void reset_thread_stats(
     std::vector<ThreadMetrics>& stats,
     std::vector<CacheModel>&    caches)
@@ -34,6 +44,11 @@ inline void reset_thread_stats(
 // Extrae el bucle de acumulación duplicado en FinegrainedRenderer y CoarseRenderer.
 // En ambos modelos, el VT total es la suma (no el máximo): los threads comparten
 // el mismo pipeline y sus quanta se suman, no se solapan.
+/**
+ * @brief Suma tiempos virtuales de workers que comparten un pipeline.
+ * @param stats Métricas por worker.
+ * @return Tiempo virtual agregado, en nanosegundos.
+ */
 inline long long sum_virtual_times(const std::vector<ThreadMetrics>& stats) {
     long long total = 0LL;
     for (const auto& s : stats) total += s.virtual_time_ns;

@@ -1,3 +1,7 @@
+/**
+ * @file RendererFactory.h
+ * @brief Registro central de renderers y creación por nombre de modelo.
+ */
 #ifndef RENDERER_FACTORY_H
 #define RENDERER_FACTORY_H
 
@@ -13,13 +17,12 @@
 #include <string>
 #include <unordered_map>
 
-// RendererFactory: Factory Pattern con registro dinámico de renderers.
-//
-// Centraliza la creación de renderers y cumple OCP:
-//   Agregar un nuevo modelo requiere añadir UNA entrada en el registro
-//   (`available_registry` o `dev_registry`) sin tocar ningún otro método.
-//
-// DIP: devuelve `unique_ptr<IRenderer>` — el cliente no depende de concretos.
+/**
+ * @brief Crea implementaciones de IRenderer a partir de su identificador.
+ *
+ * Los modelos disponibles se registran en un único mapa; los clientes dependen
+ * de la interfaz y no de las clases concretas.
+ */
 class RendererFactory {
     using FactoryFn = std::function<std::unique_ptr<IRenderer>()>;
 
@@ -43,8 +46,13 @@ class RendererFactory {
     }
 
 public:
-    // Crea el renderer para el modelo dado.
-    // Lanza std::runtime_error si está en desarrollo, std::invalid_argument si desconocido.
+    /**
+     * @brief Construye el renderer solicitado.
+     * @param model_name Identificador del modelo.
+     * @return Renderer propietario mediante unique_ptr.
+     * @throws std::runtime_error Si el modelo está registrado como no disponible.
+     * @throws std::invalid_argument Si el identificador no se reconoce.
+     */
     static std::unique_ptr<IRenderer> create(const std::string& model_name) {
         auto it = available_registry().find(model_name);
         if (it != available_registry().end())
@@ -58,12 +66,12 @@ public:
             "Unknown model: " + model_name + ". Available: sequential, fgmt, cgmt, smt, cmp");
     }
 
-    // Retorna true si el modelo está disponible (no en desarrollo).
+    /** @param model_name Identificador del modelo. @return true si está disponible. */
     static bool is_available(const std::string& model_name) {
         return available_registry().count(model_name) > 0;
     }
 
-    // Retorna mensaje de ayuda con modelos disponibles.
+    /** @return Texto de ayuda con modelos y opciones registradas. */
     static std::string get_help_message() {
         return "Usage: ./raytracer [--model MODEL] [--runs N] [--verbose N]\n"
                "Models available: sequential, fgmt, cgmt, smt, cmp\n"

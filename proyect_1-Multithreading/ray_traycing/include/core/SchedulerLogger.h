@@ -1,3 +1,7 @@
+/**
+ * @file SchedulerLogger.h
+ * @brief Logging sincronizado de eventos de los schedulers por ciclo.
+ */
 #ifndef SCHEDULER_LOGGER_H
 #define SCHEDULER_LOGGER_H
 
@@ -29,16 +33,28 @@
 //
 // Desde la línea de comandos:
 //   ./build/raytracer --model fgmt --verbose 30 --runs 1
+/**
+ * @brief Emite trazas acotadas de cómputo, stalls y finalización de workers.
+ *
+ * El mutex protege las escrituras concurrentes del modelo CMP. El límite de
+ * ciclos evita que el logging cambie excesivamente el coste de una ejecución.
+ */
 class SchedulerLogger {
 public:
-    // Habilitar traza para los primeros `n` ciclos de pipeline (0 = deshabilitado).
+    /** @brief Configura cuántos ciclos iniciales se registran. */
     void set_max_cycles(int n) { max_cycles_ = n; }
 
-    // True si el ciclo indicado debe registrarse.
+    /** @param cycle Ciclo consultado. @return true si está dentro del límite activo. */
     bool active(int cycle) const { return max_cycles_ > 0 && cycle < max_cycles_; }
 
-    // Encabezado del experimento: imprime modelo, threads, ancho de issue y constantes VT.
-    // Llamar una vez al inicio de render_frame(), antes de lanzar los workers.
+    /**
+     * @brief Imprime configuración del modelo al inicio de una traza.
+     * @param model Nombre del esquema.
+     * @param threads Cantidad de workers o contextos reportados.
+     * @param issue_width Slots de emisión por ciclo.
+     * @param pixel_quantum_ns Quantum por píxel, en ns.
+     * @param stall_penalty_ns Penalización de miss, en ns.
+     */
     void log_header(const std::string& model, int threads, int issue_width = 1,
                     long long pixel_quantum_ns = 1000, long long stall_penalty_ns = 3200) {
         if (max_cycles_ <= 0) return;
@@ -51,7 +67,7 @@ public:
                   << std::string(72, '-') << "\n";
     }
 
-    // Pixel renderizado exitosamente: thread ocupó el slot, avanzó el PC y acumuló VT.
+    /** @brief Registra el procesamiento exitoso de un píxel. */
     void log_compute(int cycle, int tid, int x, int y, long long vt_ns) {
         if (!active(cycle)) return;
         std::lock_guard<std::mutex> lk(mu_);
@@ -61,11 +77,15 @@ public:
                   << " +" << std::setw(5) << vt_ns << "ns\n";
     }
 
-    // Stall detectado: `note` describe el efecto en el scheduler y el coste VT asociado.
-    //   FGMT     → slot wasted (PIXEL_QUANTUM_NS desperdiciado, no avanza pixel)
-    //   CGMT     → ctx switch→TN (CONTEXT_SWITCH_COST_NS, stall oculto)
-    //   SMT      → miss→ejected (0ns, slot inmediatamente disponible para otro thread)
-    //   Sequential/CMP → no ctx switch (CACHE_MISS_PENALTY_NS completo)
+    /**
+     * @brief Registra un miss y el coste virtual que le asigna el modelo.
+     * @param cycle Ciclo simulado.
+     * @param tid Identificador del worker.
+     * @param x Coordenada horizontal del píxel pendiente.
+     * @param y Coordenada vertical del píxel pendiente.
+     * @param vt_ns Coste virtual asignado al evento, en nanosegundos.
+     * @param note Texto breve sobre la política aplicada.
+     */
     void log_stall(int cycle, int tid, int x, int y, long long vt_ns,
                    const char* note = "") {
         if (!active(cycle)) return;
@@ -78,7 +98,7 @@ public:
         std::cout << "\n";
     }
 
-    // Thread completó su tile — ya no tomará más slots de pipeline.
+    /** @brief Registra que un worker terminó su rango de píxeles. */
     void log_done(int cycle, int tid) {
         if (!active(cycle)) return;
         std::lock_guard<std::mutex> lk(mu_);
