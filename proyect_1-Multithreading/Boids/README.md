@@ -7,12 +7,44 @@ fine-grained, coarse-grained, SMT y CMP.
 
 - Compilador compatible con C++17.
 - CMake 3.16 o posterior.
-- Raylib solamente para la modalidad gráfica.
+- Git (para descargar Raylib con FetchContent si no está instalado).
+- Raylib solamente para la modalidad gráfica (sistema o descarga automática).
 
 Las mediciones principales del proyecto deben ejecutarse en hardware físico,
 no en WSL, máquinas virtuales ni contenedores.
 
-## Compilar y probar
+## Setup automático (recomendado)
+
+Desde la raíz del repositorio.
+
+**Windows (PowerShell):**
+
+```powershell
+Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+.\proyect_1-Multithreading\scripts\setup_windows.ps1
+# Abra una terminal nueva y luego:
+.\proyect_1-Multithreading\scripts\run_demo2.ps1 -Mode all
+```
+
+**Linux:**
+
+```bash
+chmod +x proyect_1-Multithreading/scripts/*.sh
+./proyect_1-Multithreading/scripts/setup_linux.sh
+./proyect_1-Multithreading/scripts/run_demo2.sh all
+```
+
+Modos útiles de `run_demo2`:
+
+| Modo | Qué hace |
+|---|---|
+| `benchmark` (default) | `boids --scheme compare` (tabla + frames PPM) |
+| `sequential` / `cmp` | Headless infinito de ese modelo |
+| `sequential-ui` / `cmp-ui` | `boids --scheme … --gui` |
+| `all` | Tests + compare + ambas UIs |
+| `build` / `test` | Solo compilar o compilar+ctest |
+
+## Compilar y probar (manual)
 
 Desde la raíz del repositorio:
 
@@ -22,52 +54,63 @@ cmake --build build/boids --config Release
 ctest --test-dir build/boids -C Release --output-on-failure
 ```
 
-Si Raylib no está disponible, CMake omite `boids_visual` y mantiene funcionales
-el benchmark y las pruebas. También se puede desactivar explícitamente:
+El resultado es un solo ejecutable: `build/boids/boids` (o `boids.exe`).
+Si no hay Raylib, CMake intenta descargarlo; sin Raylib el binario funciona
+pero `--gui` no estará disponible (`-DBOIDS_BUILD_VISUAL=OFF` lo omite).
 
-```bash
-cmake -S proyect_1-Multithreading/Boids -B build/boids -DBOIDS_BUILD_VISUAL=OFF
+## Ejecutar (CLI unificado)
+
+```text
+boids --scheme sequential|fine|coarse|smt|cmp|compare
+      [--gui|--no-gui] [--forever|--steps N]
+      [--boids N] [--workers N] [--partial N] [--oversubscribe N]
+      [--perception R] [--separation R] [--seed N] ...
 ```
 
-## Ejecutar
-
-Modalidad no gráfica:
+Ejemplos:
 
 ```bash
-./build/boids/boids_benchmark
+# Demo 2: comparar todos los esquemas + frames (sin UI)
+./build/boids/boids --scheme compare
+
+# Secuencial / CMP indefinidos sin UI
+./build/boids/boids --scheme sequential --forever
+./build/boids/boids --scheme cmp --forever
+
+# Con GUI (hasta cerrar la ventana)
+./build/boids/boids --scheme sequential --gui
+./build/boids/boids --scheme cmp --gui --boids 300
+
+# Parámetros del problema
+./build/boids/boids --scheme coarse --workers 8 --boids 200 --steps 1000
+
+# Ayuda
+./build/boids/boids --help
 ```
 
-En generadores multiconfiguración de Windows, el ejecutable suele quedar en
-`build/boids/Release/boids_benchmark.exe`.
+En Windows (MinGW): `build\boids\boids.exe`. Con MSVC suele estar en
+`build\boids\Release\boids.exe`.
 
-El benchmark imprime tiempos y validaciones de los cinco esquemas. También
-exporta 70 frames PPM en `frames/`, correspondientes a 350 pasos. Se pueden
-convertir a video con:
+Frames PPM del modo `compare` → `frames/`. Video opcional:
 
 ```bash
 ffmpeg -framerate 15 -i frames/frame_%03d.ppm -pix_fmt yuv420p flock.mp4
-```
-
-Modalidad gráfica secuencial, cuando Raylib esté disponible:
-
-```bash
-./build/boids/boids_visual
 ```
 
 ## Evidencia de la Demostración 2
 
 | Requisito | Implementación |
 |---|---|
-| Sistema base sin hilos | `SequentialScheme` |
-| Variables críticas | `FlockingConfig` y `main_benchmark.cpp` |
-| Dummy fine-grained | `FineGrainedScheme` y `SteeringContext` |
-| Dummy coarse-grained | `CoarseGrainedScheme` y `ThreadedScheme` |
-| Aproximación SMT | `SmtScheme` con sobresuscripción |
-| Aproximación CMP | `CmpScheme` con trabajadores reales |
+| Sistema base sin hilos | `SequentialScheme` (`--scheme sequential`) |
+| Variables críticas | `FlockingConfig` + flags CLI (`--boids`, radios, pesos) |
+| Dummy fine-grained | `FineGrainedScheme` (`--scheme fine --partial N`) |
+| Dummy coarse-grained | `CoarseGrainedScheme` (`--scheme coarse --workers N`) |
+| Aproximación SMT | `SmtScheme` (`--scheme smt --oversubscribe N`) |
+| Aproximación CMP | `CmpScheme` (`--scheme cmp`) |
 | Mediciones | `BoidsMetrics`, `metrics_interface` y `Timer` |
-| Modalidad no gráfica | `main_benchmark.cpp` y `FrameWriter` |
-| Modalidad gráfica | `main_visual.cpp` y `RaylibRenderer` |
-| Correctitud | `tests/test_boids.cpp` y validaciones del benchmark |
+| Modalidad no gráfica | `boids --no-gui` (default) |
+| Modalidad gráfica | `boids --gui` + `RaylibRenderer` |
+| Correctitud | `tests/test_boids.cpp` y `--scheme compare` / `--validate` |
 
 Los diagramas y la explicación completa están en
 [`../docs/demo2/README.md`](../docs/demo2/README.md).

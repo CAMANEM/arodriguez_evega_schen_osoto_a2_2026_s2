@@ -6,7 +6,7 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-option(BOIDS_BUILD_VISUAL "Build the optional Raylib visualization" ON)
+option(BOIDS_BUILD_VISUAL "Link Raylib into the unified boids binary (--gui)" ON)
 option(BOIDS_BUILD_TESTS "Build the automated validation tests" ON)
 
 find_package(Threads REQUIRED)
@@ -26,6 +26,8 @@ set(BOIDS_CORE_SOURCES
     src/core/ThreadedScheme.cpp
     src/core/Timer.cpp
     src/core/Vector2D.cpp
+    src/cli/CliOptions.cpp
+    src/cli/SchemeFactory.cpp
     ../shared/src/metrics_interface.cpp
 )
 
@@ -44,31 +46,45 @@ else()
     target_compile_options(boids_core PRIVATE -Wall -Wextra -Wpedantic)
 endif()
 
-add_executable(boids_benchmark src/main_benchmark.cpp)
-target_compile_features(boids_benchmark PRIVATE cxx_std_17)
-target_link_libraries(boids_benchmark PRIVATE boids_core)
+# Ejecutable unificado: modelo / parametros / GUI se eligen por CLI.
+add_executable(boids src/main.cpp)
+target_compile_features(boids PRIVATE cxx_std_17)
+target_link_libraries(boids PRIVATE boids_core)
 if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND
    CMAKE_CXX_COMPILER_VERSION VERSION_LESS 9)
-    target_link_libraries(boids_benchmark PRIVATE stdc++fs)
+    target_link_libraries(boids PRIVATE stdc++fs)
 endif()
 
+set(BOIDS_RAYLIB_TARGET "")
 if(BOIDS_BUILD_VISUAL)
     find_package(raylib QUIET)
     if(TARGET raylib)
-        add_executable(boids_visual
-            src/main_visual.cpp
-            src/visual/RaylibRenderer.cpp
-        )
-        target_link_libraries(boids_visual PRIVATE boids_core raylib)
+        set(BOIDS_RAYLIB_TARGET raylib)
     elseif(TARGET raylib::raylib)
-        add_executable(boids_visual
-            src/main_visual.cpp
-            src/visual/RaylibRenderer.cpp
-        )
-        target_link_libraries(boids_visual PRIVATE boids_core raylib::raylib)
+        set(BOIDS_RAYLIB_TARGET raylib::raylib)
     else()
-        message(STATUS "Raylib not found: boids_visual will not be built")
+        include(FetchContent)
+        set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+        set(BUILD_GAMES OFF CACHE BOOL "" FORCE)
+        FetchContent_Declare(
+            raylib
+            GIT_REPOSITORY https://github.com/raysan5/raylib.git
+            GIT_TAG 5.5
+        )
+        FetchContent_MakeAvailable(raylib)
+        if(TARGET raylib)
+            set(BOIDS_RAYLIB_TARGET raylib)
+        endif()
     endif()
+endif()
+
+if(BOIDS_RAYLIB_TARGET)
+    target_sources(boids PRIVATE src/visual/RaylibRenderer.cpp)
+    target_link_libraries(boids PRIVATE ${BOIDS_RAYLIB_TARGET})
+    target_compile_definitions(boids PRIVATE BOIDS_HAS_GUI=1)
+    message(STATUS "boids: GUI habilitada (use --gui)")
+else()
+    message(STATUS "boids: sin Raylib --gui no estara disponible")
 endif()
 
 if(BOIDS_BUILD_TESTS)

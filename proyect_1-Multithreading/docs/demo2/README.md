@@ -113,24 +113,39 @@ flowchart TB
 |---|---|
 | Diagramas preliminares | Diagramas de este documento |
 | Cambios significativos | Lista inicial y separación por estrategias |
-| Sistema base sin hilos | `SequentialScheme` y `boids_visual` |
-| Variables de paralelización | Tabla anterior y `FlockingConfig` |
+| Sistema base sin hilos | `SequentialScheme` (`boids --scheme sequential`) |
+| Variables de paralelización | Tabla anterior, `FlockingConfig` y flags CLI |
 | Dummy fine | `FineGrainedScheme`, validado sobre su subconjunto |
 | Dummy coarse | `CoarseGrainedScheme`, validado contra todo el baseline |
 | Dummy SMT | `SmtScheme`, validado contra todo el baseline |
 | Dummy CMP | `CmpScheme`, validado contra todo el baseline |
-| Mediciones | Tabla producida por `boids_benchmark` |
-| Modalidad no gráfica | Benchmark y frames PPM |
-| Modalidad gráfica | Ejecutable opcional `boids_visual` |
+| Mediciones | Tabla de `boids --scheme compare` |
+| Modalidad no gráfica | `boids --no-gui` y frames PPM |
+| Modalidad gráfica | `boids --gui` (mismo ejecutable) |
 
 ## Guion corto para la ejecución
 
+Scripts de setup y demo (instalan deps y PATH si faltan):
+
+- Windows: `proyect_1-Multithreading/scripts/setup_windows.ps1` y `run_demo2.ps1`
+- Linux: `proyect_1-Multithreading/scripts/setup_linux.sh` y `run_demo2.sh`
+
+Para la defensa de Demo 2:
+
+```powershell
+.\proyect_1-Multithreading\scripts\run_demo2.ps1 -Mode all
+```
+
+```bash
+./proyect_1-Multithreading/scripts/run_demo2.sh all
+```
+
 1. Compilar en Release y ejecutar `ctest`.
-2. Ejecutar `boids_benchmark`.
+2. Ejecutar `boids --scheme compare` (sin UI: secuencial + dummies + frames).
 3. Señalar la cantidad y el tipo de trabajadores de cada fila.
 4. Mostrar las cuatro validaciones exitosas.
-5. Mostrar los PPM convertidos a video o ejecutar `boids_visual`.
-6. Cambiar `boidCount` o la cantidad coarse para explicar escalabilidad.
+5. Mostrar los PPM o `boids --scheme sequential --gui` / `boids --scheme cmp --gui`.
+6. Cambiar `--boids` o `--workers` para explicar escalabilidad.
 
 Las cifras de esta demostración prueban funcionalidad, no significancia
 estadística. La campaña final debe realizar al menos 200 ejecuciones por caso,
