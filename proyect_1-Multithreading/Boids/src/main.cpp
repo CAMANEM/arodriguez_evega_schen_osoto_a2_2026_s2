@@ -69,7 +69,29 @@ void printConfigBanner(const CliOptions& options, const FlockingConfig& config) 
     std::cout << "scheme=" << schemeLabel(options.scheme)
               << " gui=" << (options.gui ? "yes" : "no")
               << " boids=" << config.getBoidCount()
+              << " world=" << static_cast<int>(config.getWorldWidth()) << "x"
+              << static_cast<int>(config.getWorldHeight())
+              << " perception=" << config.getPerceptionRadius()
+              << " separation=" << config.getSeparationRadius()
+              << " maxSpeed=" << config.getMaxSpeed()
+              << " maxForce=" << config.getMaxForce()
+              << " weights(sep/align/coh)=" << config.getSeparationWeight() << "/"
+              << config.getAlignmentWeight() << "/" << config.getCohesionWeight()
+              << " dt=" << config.getDeltaTime()
               << " seed=" << options.seed;
+    if (options.scheme == RunScheme::Fine) {
+        if (options.finePartialBoids <= 0) {
+            std::cout << " partial=all";
+        } else {
+            std::cout << " partial=" << options.finePartialBoids;
+        }
+    }
+    if (options.scheme == RunScheme::Coarse) {
+        std::cout << " workers=" << options.workers;
+    }
+    if (options.scheme == RunScheme::Smt) {
+        std::cout << " oversubscribe=" << options.smtOversubscribe;
+    }
     if (options.gui) {
         std::cout << " (loop hasta cerrar ventana)";
     } else if (options.forever) {
@@ -236,7 +258,8 @@ int runGui(const CliOptions& options) {
 
     std::unique_ptr<Renderer> renderer = createRaylibRenderer();
     std::ostringstream title;
-    title << "Flocking - " << schemeLabel(options.scheme);
+    title << "Flocking - " << schemeLabel(options.scheme) << " - "
+          << config.getBoidCount() << " boids";
     if (!renderer->init(static_cast<int>(config.getWorldWidth()),
                         static_cast<int>(config.getWorldHeight()), title.str().c_str())) {
         std::cerr << "Error al inicializar la ventana\n";

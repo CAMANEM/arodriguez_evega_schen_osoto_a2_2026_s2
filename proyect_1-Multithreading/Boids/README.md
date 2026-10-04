@@ -63,7 +63,7 @@ pero `--gui` no estará disponible (`-DBOIDS_BUILD_VISUAL=OFF` lo omite).
 ```text
 boids --scheme sequential|fine|coarse|smt|cmp|compare
       [--gui|--no-gui] [--forever|--steps N]
-      [--boids N] [--workers N] [--partial N] [--oversubscribe N]
+      [--boids N|--bodies N|-n N] [--workers N] [--partial N] [--oversubscribe N]
       [--perception R] [--separation R] [--seed N] ...
 ```
 
@@ -84,6 +84,8 @@ Ejemplos:
 # Fine-grained simulado (flock completo; --partial N para demos)
 ./build/boids/boids --scheme fine --validate --boids 40
 ./build/boids/boids --scheme fine --partial 20 --steps 1
+./build/boids/boids --scheme fine --gui -n 80 --perception 60 --separation 25
+./build/boids/boids --scheme fine --no-gui --bodies 120 --seed 7 --steps 50
 
 # Ayuda
 ./build/boids/boids --help

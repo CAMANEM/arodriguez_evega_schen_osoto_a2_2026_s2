@@ -1,6 +1,7 @@
 #include "cli/CliOptions.hpp"
 
 #include <cstdlib>
+#include <initializer_list>
 #include <iostream>
 #include <stdexcept>
 #include <string>
@@ -16,6 +17,26 @@ std::string requireValue(int argc, char** argv, int& i, const char* flag) {
         throw std::runtime_error(std::string("Falta valor para ") + flag);
     }
     return argv[++i];
+}
+
+/**
+ * @brief Extrae el valor de `--flag valor` o `--flag=valor` si arg coincide.
+ * @return true si alguno de los nombres coincidió.
+ */
+bool takeFlagValue(int argc, char** argv, int& i, const std::string& arg,
+                   std::initializer_list<const char*> names, std::string& value) {
+    for (const char* name : names) {
+        if (arg == name) {
+            value = requireValue(argc, argv, i, name);
+            return true;
+        }
+        const std::string equalsPrefix = std::string(name) + "=";
+        if (startsWith(arg, equalsPrefix.c_str())) {
+            value = arg.substr(equalsPrefix.size());
+            return true;
+        }
+    }
+    return false;
 }
 
 int parseInt(const std::string& text, const char* flag) {
@@ -123,14 +144,16 @@ void printCliHelp(const char* argv0) {
         << "  --steps N            Cantidad de pasos (default: 1; compare usa 1 por esquema)\n"
         << "  --forever            Bucle infinito (Ctrl+C para salir)\n"
         << "\n"
-        << "Parametros del problema:\n"
-        << "  --boids N            Cantidad de boids (default: 70; GUI default visual: 250)\n"
+        << "Parametros del problema (validos con --gui y --no-gui):\n"
+        << "  --boids N, --bodies N, -n N\n"
+        << "                       Cantidad de boids (default: 70; GUI sin flag: 250)\n"
         << "  --width W --height H Mundo / ventana\n"
         << "  --perception R --separation R\n"
         << "  --max-speed S --max-force F\n"
         << "  --sep-weight W --align-weight W --cohesion-weight W\n"
         << "  --dt T               Paso de integracion\n"
         << "  --seed N             Semilla del enjambre inicial\n"
+        << "  Tambien se acepta --flag=valor (ej. --boids=80).\n"
         << "\n"
         << "Trabajadores por modelo:\n"
         << "  --workers N          Hilos coarse (default: 4)\n"
@@ -147,8 +170,10 @@ void printCliHelp(const char* argv0) {
         << "  " << argv0 << " --scheme sequential --forever\n"
         << "  " << argv0 << " --scheme cmp --gui\n"
         << "  " << argv0 << " --scheme sequential --gui --boids 250\n"
+        << "  " << argv0 << " --scheme fine --gui -n 80 --perception 60 --separation 25\n"
+        << "  " << argv0 << " --scheme fine --no-gui --bodies 120 --seed 7 --steps 50\n"
         << "  " << argv0 << " --scheme compare --export-frames frames --steps 350\n"
-        << "  " << argv0 << " --scheme fine --validate --boids 40\n"
+        << "  " << argv0 << " --scheme fine --validate --boids=40\n"
         << "  " << argv0 << " --scheme fine --partial 20 --steps 1\n"
         << "  " << argv0 << " --scheme coarse --workers 8 --steps 1000 --boids 200\n";
 }
@@ -158,9 +183,11 @@ CliOptions parseCli(int argc, char** argv) {
     bool boidsSet = false;
     bool widthSet = false;
     bool heightSet = false;
+    bool physicsSet = false;
 
     for (int i = 1; i < argc; ++i) {
         const std::string arg = argv[i];
+        std::string value;
 
         if (arg == "-h" || arg == "--help") {
             options.showHelp = true;
@@ -182,99 +209,90 @@ CliOptions parseCli(int argc, char** argv) {
             options.validate = true;
             continue;
         }
-        if (arg == "--scheme") {
-            options.scheme = parseScheme(requireValue(argc, argv, i, "--scheme"));
+        if (takeFlagValue(argc, argv, i, arg, {"--scheme"}, value)) {
+            options.scheme = parseScheme(value);
             continue;
         }
-        if (startsWith(arg, "--scheme=")) {
-            options.scheme = parseScheme(arg.substr(9));
+        if (takeFlagValue(argc, argv, i, arg, {"--steps"}, value)) {
+            options.steps = parseInt(value, "--steps");
             continue;
         }
-        if (arg == "--steps") {
-            options.steps = parseInt(requireValue(argc, argv, i, "--steps"), "--steps");
+        if (takeFlagValue(argc, argv, i, arg, {"--seed"}, value)) {
+            options.seed = parseInt(value, "--seed");
             continue;
         }
-        if (arg == "--seed") {
-            options.seed = parseInt(requireValue(argc, argv, i, "--seed"), "--seed");
+        if (takeFlagValue(argc, argv, i, arg, {"--workers", "--threads"}, value)) {
+            options.workers = parseInt(value, "--workers");
             continue;
         }
-        if (arg == "--workers" || arg == "--threads") {
-            options.workers = parseInt(requireValue(argc, argv, i, arg.c_str()), arg.c_str());
+        if (takeFlagValue(argc, argv, i, arg, {"--partial"}, value)) {
+            options.finePartialBoids = parseInt(value, "--partial");
             continue;
         }
-        if (arg == "--partial") {
-            options.finePartialBoids =
-                parseInt(requireValue(argc, argv, i, "--partial"), "--partial");
+        if (takeFlagValue(argc, argv, i, arg, {"--oversubscribe"}, value)) {
+            options.smtOversubscribe = parseUInt(value, "--oversubscribe");
             continue;
         }
-        if (arg == "--oversubscribe") {
-            options.smtOversubscribe =
-                parseUInt(requireValue(argc, argv, i, "--oversubscribe"), "--oversubscribe");
-            continue;
-        }
-        if (arg == "--boids") {
-            options.boidCount = parseInt(requireValue(argc, argv, i, "--boids"), "--boids");
+        if (takeFlagValue(argc, argv, i, arg, {"--boids", "--bodies", "--n", "-n"}, value)) {
+            options.boidCount = parseInt(value, "--boids");
             boidsSet = true;
             continue;
         }
-        if (arg == "--width") {
-            options.worldWidth =
-                parseDouble(requireValue(argc, argv, i, "--width"), "--width");
+        if (takeFlagValue(argc, argv, i, arg, {"--width"}, value)) {
+            options.worldWidth = parseDouble(value, "--width");
             widthSet = true;
             continue;
         }
-        if (arg == "--height") {
-            options.worldHeight =
-                parseDouble(requireValue(argc, argv, i, "--height"), "--height");
+        if (takeFlagValue(argc, argv, i, arg, {"--height"}, value)) {
+            options.worldHeight = parseDouble(value, "--height");
             heightSet = true;
             continue;
         }
-        if (arg == "--perception") {
-            options.perceptionRadius =
-                parseDouble(requireValue(argc, argv, i, "--perception"), "--perception");
+        if (takeFlagValue(argc, argv, i, arg, {"--perception"}, value)) {
+            options.perceptionRadius = parseDouble(value, "--perception");
+            physicsSet = true;
             continue;
         }
-        if (arg == "--separation") {
-            options.separationRadius =
-                parseDouble(requireValue(argc, argv, i, "--separation"), "--separation");
+        if (takeFlagValue(argc, argv, i, arg, {"--separation"}, value)) {
+            options.separationRadius = parseDouble(value, "--separation");
+            physicsSet = true;
             continue;
         }
-        if (arg == "--max-speed") {
-            options.maxSpeed =
-                parseDouble(requireValue(argc, argv, i, "--max-speed"), "--max-speed");
+        if (takeFlagValue(argc, argv, i, arg, {"--max-speed"}, value)) {
+            options.maxSpeed = parseDouble(value, "--max-speed");
+            physicsSet = true;
             continue;
         }
-        if (arg == "--max-force") {
-            options.maxForce =
-                parseDouble(requireValue(argc, argv, i, "--max-force"), "--max-force");
+        if (takeFlagValue(argc, argv, i, arg, {"--max-force"}, value)) {
+            options.maxForce = parseDouble(value, "--max-force");
+            physicsSet = true;
             continue;
         }
-        if (arg == "--sep-weight") {
-            options.separationWeight =
-                parseDouble(requireValue(argc, argv, i, "--sep-weight"), "--sep-weight");
+        if (takeFlagValue(argc, argv, i, arg, {"--sep-weight"}, value)) {
+            options.separationWeight = parseDouble(value, "--sep-weight");
+            physicsSet = true;
             continue;
         }
-        if (arg == "--align-weight") {
-            options.alignmentWeight =
-                parseDouble(requireValue(argc, argv, i, "--align-weight"), "--align-weight");
+        if (takeFlagValue(argc, argv, i, arg, {"--align-weight"}, value)) {
+            options.alignmentWeight = parseDouble(value, "--align-weight");
+            physicsSet = true;
             continue;
         }
-        if (arg == "--cohesion-weight") {
-            options.cohesionWeight = parseDouble(
-                requireValue(argc, argv, i, "--cohesion-weight"), "--cohesion-weight");
+        if (takeFlagValue(argc, argv, i, arg, {"--cohesion-weight"}, value)) {
+            options.cohesionWeight = parseDouble(value, "--cohesion-weight");
+            physicsSet = true;
             continue;
         }
-        if (arg == "--dt") {
-            options.deltaTime = parseDouble(requireValue(argc, argv, i, "--dt"), "--dt");
+        if (takeFlagValue(argc, argv, i, arg, {"--dt"}, value)) {
+            options.deltaTime = parseDouble(value, "--dt");
             continue;
         }
-        if (arg == "--export-frames") {
-            options.exportFramesDir = requireValue(argc, argv, i, "--export-frames");
+        if (takeFlagValue(argc, argv, i, arg, {"--export-frames"}, value)) {
+            options.exportFramesDir = value;
             continue;
         }
-        if (arg == "--frame-interval") {
-            options.frameInterval =
-                parseInt(requireValue(argc, argv, i, "--frame-interval"), "--frame-interval");
+        if (takeFlagValue(argc, argv, i, arg, {"--frame-interval"}, value)) {
+            options.frameInterval = parseInt(value, "--frame-interval");
             continue;
         }
 
@@ -292,7 +310,7 @@ CliOptions parseCli(int argc, char** argv) {
         if (!heightSet) {
             options.worldHeight = 800.0;
         }
-        if (options.separationRadius == 20.0 && options.separationWeight == 1.0) {
+        if (!physicsSet) {
             options.separationRadius = 45.0;
             options.separationWeight = 6.0;
             options.alignmentWeight = 0.7;

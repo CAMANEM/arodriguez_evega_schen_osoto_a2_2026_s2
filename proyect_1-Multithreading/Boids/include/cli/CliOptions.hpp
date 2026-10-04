@@ -58,6 +58,10 @@ struct CliOptions {
 
 /**
  * @brief Interpreta argc/argv. Lanza std::runtime_error si hay error.
+ *
+ * Cantidad de boids: `--boids`, `--bodies` o `-n` (también `--flag=valor`).
+ * El resto de variables del problema (`--perception`, `--separation`, pesos,
+ * mundo, `--seed`, `--partial`, etc.) aplican igual con `--gui` y `--no-gui`.
  */
 CliOptions parseCli(int argc, char** argv);
 

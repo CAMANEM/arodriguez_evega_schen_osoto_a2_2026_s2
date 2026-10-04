@@ -3,6 +3,7 @@
 #include <string>
 #include <vector>
 
+#include "cli/CliOptions.hpp"
 #include "object_interface.hpp"
 #include "core/Boid.hpp"
 #include "core/BoidsMetrics.hpp"
@@ -226,6 +227,45 @@ bool testFineGrainedEdgeCases() {
            flocksMatch(sequentialFlock, clampedFlock, 8);
 }
 
+CliOptions parseArgs(const std::vector<std::string>& args) {
+    std::vector<std::string> storage;
+    storage.reserve(args.size() + 1);
+    storage.emplace_back("boids");
+    storage.insert(storage.end(), args.begin(), args.end());
+
+    std::vector<char*> argv;
+    argv.reserve(storage.size());
+    for (auto& token : storage) {
+        argv.push_back(token.data());
+    }
+    return parseCli(static_cast<int>(argv.size()), argv.data());
+}
+
+/**
+ * @brief El CLI selecciona N boids y el resto de variables del problema.
+ */
+bool testCliProblemParameters() {
+    const CliOptions headless = parseArgs(
+        {"--scheme", "fine", "--bodies", "33", "--perception", "70", "--separation", "22",
+         "--seed", "9"});
+    if (headless.scheme != RunScheme::Fine || headless.gui || headless.boidCount != 33 ||
+        !nearlyEqual(headless.perceptionRadius, 70.0) ||
+        !nearlyEqual(headless.separationRadius, 22.0) || headless.seed != 9) {
+        return false;
+    }
+
+    const CliOptions equalsForm = parseArgs({"--scheme=fine", "--boids=41", "--partial=12"});
+    if (equalsForm.boidCount != 41 || equalsForm.finePartialBoids != 12) {
+        return false;
+    }
+
+    const CliOptions shortN = parseArgs({"-n", "15", "--scheme", "fine", "--gui",
+                                         "--separation", "20", "--sep-weight", "1.0"});
+    return shortN.gui && shortN.boidCount == 15 &&
+           nearlyEqual(shortN.separationRadius, 20.0) &&
+           nearlyEqual(shortN.separationWeight, 1.0);
+}
+
 /**
  * @brief Verifica que coarse-grained produzca el baseline completo.
  */
@@ -268,6 +308,7 @@ int main() {
     check(testFineGrainedSingleQuantum(), "quantum de un candidato");
     check(testFineGrainedRoundRobin(), "round-robin entre contextos");
     check(testFineGrainedEdgeCases(), "bordes fine-grained");
+    check(testCliProblemParameters(), "CLI parametros del problema");
     check(testCoarseGrainedEquivalence(), "equivalencia coarse-grained");
 
     if (failures == 0) {
