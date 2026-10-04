@@ -44,6 +44,9 @@ build/
 Build/
 build-*/
 
+# Generated data and result directories
+data/
+
 # CMake generated files
 CMakeFiles/
 CMakeCache.txt
@@ -57,6 +60,9 @@ compile_commands.json
 *.log
 *.bak
 *.swp
+
+# VS Code workspace settings
+.vscode/
 
 # vcpkg
 vcpkg_installed/

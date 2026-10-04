@@ -10,7 +10,7 @@ Fine-Grained, Coarse-Grained, SMT, and CMP multithreading.
 | `boids/` | Flocking behavior (separation, alignment, cohesion) |
 | `n_body/` | Gravitational attraction (universal law) |
 | `liquids/` | Particle-based fluid simulation |
-| `ray_traycing/` | Ray tracing |
+| `ray_traycing/` | Ray tracing ([build and execution](ray_traycing/README.md)) |
 
 ## Structure
 
