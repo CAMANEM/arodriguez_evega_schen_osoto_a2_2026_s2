@@ -61,6 +61,9 @@ compile_commands.json
 *.bak
 *.swp
 
+# VS Code workspace settings
+.vscode/
+
 # vcpkg
 vcpkg_installed/
 
