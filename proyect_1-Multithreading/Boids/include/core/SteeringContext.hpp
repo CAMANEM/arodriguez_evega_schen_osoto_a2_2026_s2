@@ -6,21 +6,13 @@
 #include "core/Vector2D.hpp"
 
 /**
- * @brief Representa el estado de ejecución de "un hilo virtual" que
- *        calcula la fuerza de dirección de un único boid, evaluando un
- *        vecino candidato a la vez.
+ * @brief Contexto virtual (hilo lógico) que calcula el steering de un boid
+ *        evaluando exactamente un vecino candidato por quantum.
  *
- * Esta clase existe exclusivamente para simular el modelo de multihilo de
- * grano fino (ver FineGrainedScheme), tal como lo exige el enunciado:
- * "planificación cooperativa o simulación de ejecución por ciclos o
- * cuantums, donde el cambio de hilo ocurre en cada ciclo (quantum mínimo)
- * en forma round-robin, independientemente de si el hilo actual ha
- * sufrido un stall". Aquí, un "ciclo" equivale a examinar un único vecino
- * candidato: el contexto evalúa la distancia, acumula su contribución si
- * corresponde, y cede el turno sin importar que a otros contextos les
- * queden muchos más candidatos por examinar (su "stall").
- *
- * 
+ * Existe para simular Fine-Grained Multithreading: el sistema operativo no
+ * cambia de contexto por ciclo, así que el scheduler cooperativo de
+ * FineGrainedScheme llama a stepOnce() y cede el turno aunque quede
+ * trabajo pendiente (el "stall" lógico de este modelo).
  */
 class SteeringContext {
 public:
@@ -28,22 +20,28 @@ public:
      * @brief Crea un contexto de ejecución para un boid específico.
      * @param boidIndex Índice del boid cuya fuerza de dirección calculará
      *        este contexto.
-     * @param flock Enjambre completo (de solo lectura durante el cálculo).
+     * @param flock Enjambre completo (solo lectura durante el cálculo).
      * @param config Configuración de la simulación.
      */
     SteeringContext(int boidIndex, const Flock& flock, const FlockingConfig& config);
 
     /**
-     * @brief Ejecuta un único ciclo: examina el siguiente vecino candidato
-     *        pendiente y acumula su contribución si está dentro del radio
-     *        de percepción (o de separación).
-     * @return true si el contexto sigue activo (le quedan candidatos por
-     *         examinar), false si ya examinó a todos los demás boids.
+     * @brief Ejecuta un único quantum: examina el siguiente candidato y
+     *        acumula su contribución si está dentro del radio de
+     *        percepción (y de separación, si aplica).
+     * @return true si el contexto sigue activo (le quedan candidatos),
+     *         false si ya examinó a todos los demás boids.
      */
     bool stepOnce();
 
     /** @return true si el contexto ya terminó de examinar candidatos. */
     bool isFinished() const;
+
+    /**
+     * @brief Indica si queda trabajo pendiente (stall lógico del modelo).
+     * @return true cuando isFinished() es false.
+     */
+    bool hasPendingWork() const;
 
     /**
      * @brief Combina las sumas parciales acumuladas durante el round-robin
@@ -55,18 +53,46 @@ public:
     /** @return Índice del boid asociado a este contexto. */
     int getBoidIndex() const;
 
+    /**
+     * @brief Cursor del próximo candidato a examinar (índice en el flock).
+     * @return Índice del siguiente boid candidato, o getBoidCount() si ya
+     *         no quedan candidatos.
+     */
+    int getCandidateCursor() const;
+
+    /**
+     * @brief Cuantums ejecutados por este contexto (cada uno = 1 candidato).
+     * @return Cantidad de llamadas a stepOnce() que examinaron un candidato.
+     */
+    int getQuantumsExecuted() const;
+
 private:
     int boidIndex_;
     const Flock* flock_;
     const FlockingConfig* config_;
     int candidateCursor_;
     int neighborCount_;
+    int quantumsExecuted_;
     Vector2D separationSum_;
     Vector2D velocitySum_;
     Vector2D positionSum_;
     bool finished_;
 
-    /** @brief Avanza candidateCursor_ saltando el propio índice del boid. */
+    /**
+     * @brief Acumula alineación, cohesión y separación del candidato actual
+     *        si está dentro de los radios configurados.
+     */
+    void accumulateCurrentCandidate();
+
+    /**
+     * @brief Avanza el cursor un índice y salta el boid propio.
+     */
+    void advanceToNextCandidate();
+
+    /**
+     * @brief Avanza candidateCursor_ si apunta al propio boid y marca el
+     *        contexto como terminado cuando no quedan candidatos.
+     */
     void skipSelfIndex();
 };
 

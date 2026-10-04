@@ -1,6 +1,7 @@
 #include <cmath>
 #include <iostream>
 #include <string>
+#include <vector>
 
 #include "object_interface.hpp"
 #include "core/Boid.hpp"
@@ -10,6 +11,7 @@
 #include "core/Flock.hpp"
 #include "core/FlockingConfig.hpp"
 #include "core/SequentialScheme.hpp"
+#include "core/SteeringContext.hpp"
 #include "core/Vector2D.hpp"
 
 namespace {
@@ -68,12 +70,16 @@ bool testObjectInterface() {
     return updated && reset;
 }
 
+FlockingConfig makeTestConfig(int boidCount) {
+    return FlockingConfig(boidCount, 200.0, 200.0, 50.0, 20.0,
+                          2.6, 0.18, 1.0, 1.4, 0.8, 1.0);
+}
+
 /**
- * @brief Verifica que fine-grained produzca el baseline en su subconjunto.
+ * @brief Equivalencia Fine vs Sequential sobre un subconjunto parcial.
  */
-bool testFineGrainedEquivalence() {
-    const FlockingConfig config(12, 200.0, 200.0, 50.0, 20.0,
-                                2.6, 0.18, 1.0, 1.4, 0.8, 1.0);
+bool testFineGrainedPartialEquivalence() {
+    const FlockingConfig config = makeTestConfig(12);
     const Flock initial(config, 17);
     Flock sequentialFlock = initial;
     Flock fineFlock = initial;
@@ -87,7 +93,137 @@ bool testFineGrainedEquivalence() {
            metrics.get_n_workers() == 5 &&
            metrics.get_run_count() == 1 &&
            metrics.uses_virtual_workers() &&
+           metrics.is_partial() &&
+           metrics.get_boids_processed() == 5 &&
            flocksMatch(sequentialFlock, fineFlock, 5);
+}
+
+/**
+ * @brief Equivalencia Fine vs Sequential sobre el flock completo.
+ */
+bool testFineGrainedFullEquivalence() {
+    const FlockingConfig config = makeTestConfig(12);
+    const Flock initial(config, 17);
+    Flock sequentialFlock = initial;
+    Flock fineFlock = initial;
+
+    SequentialScheme sequential;
+    FineGrainedScheme fine(0);
+    sequential.simulateStep(sequentialFlock, config);
+    const BoidsMetrics metrics = fine.simulateStep(fineFlock, config);
+
+    return !metrics.is_partial() &&
+           metrics.get_n_workers() == 12 &&
+           flocksMatch(sequentialFlock, fineFlock, 12);
+}
+
+/**
+ * @brief El scheduler termina y cada contexto examina N-1 candidatos.
+ */
+bool testFineGrainedTermination() {
+    const FlockingConfig config = makeTestConfig(6);
+    const Flock flock(config, 3);
+    std::vector<SteeringContext> contexts;
+    for (int i = 0; i < flock.getBoidCount(); ++i) {
+        contexts.emplace_back(i, flock, config);
+    }
+
+    FineGrainedScheme::runRoundRobinUntilDone(contexts);
+
+    for (const auto& context : contexts) {
+        if (!context.isFinished() ||
+            context.getQuantumsExecuted() != flock.getBoidCount() - 1) {
+            return false;
+        }
+    }
+    return true;
+}
+
+/**
+ * @brief stepOnce avanza exactamente un candidato (saltando el boid propio).
+ */
+bool testFineGrainedSingleQuantum() {
+    const FlockingConfig config = makeTestConfig(4);
+    const Flock flock(config, 9);
+    SteeringContext context(0, flock, config);
+
+    if (context.getCandidateCursor() != 1 || context.getQuantumsExecuted() != 0) {
+        return false;
+    }
+
+    const bool stillActive = context.stepOnce();
+    return stillActive &&
+           context.getQuantumsExecuted() == 1 &&
+           context.getCandidateCursor() == 2 &&
+           !context.isFinished();
+}
+
+/**
+ * @brief Una ronda sirve A,B,C... aunque cada contexto tenga trabajo pendiente.
+ */
+bool testFineGrainedRoundRobin() {
+    const FlockingConfig config = makeTestConfig(3);
+    const Flock flock(config, 11);
+    std::vector<SteeringContext> contexts;
+    for (int i = 0; i < 3; ++i) {
+        contexts.emplace_back(i, flock, config);
+    }
+
+    const bool stillPending = FineGrainedScheme::runOneRound(contexts);
+    for (const auto& context : contexts) {
+        if (context.getQuantumsExecuted() != 1) {
+            return false;
+        }
+    }
+
+    const bool finishedAfterSecondRound = !FineGrainedScheme::runOneRound(contexts);
+    for (const auto& context : contexts) {
+        if (context.getQuantumsExecuted() != 2 || !context.isFinished()) {
+            return false;
+        }
+    }
+    return stillPending && finishedAfterSecondRound;
+}
+
+/**
+ * @brief Bordes: 0 y 1 boid, partial=0, partial mayor al flock (clamp).
+ */
+bool testFineGrainedEdgeCases() {
+    const FlockingConfig emptyConfig = makeTestConfig(0);
+    Flock emptyFlock(emptyConfig, 1);
+    FineGrainedScheme fineAll(0);
+    const BoidsMetrics emptyMetrics = fineAll.simulateStep(emptyFlock, emptyConfig);
+    if (emptyMetrics.get_boids_processed() != 0 || emptyMetrics.get_n_workers() != 0) {
+        return false;
+    }
+
+    const FlockingConfig oneConfig = makeTestConfig(1);
+    Flock sequentialOne(oneConfig, 4);
+    Flock fineOne = sequentialOne;
+    SequentialScheme sequential;
+    sequential.simulateStep(sequentialOne, oneConfig);
+    const BoidsMetrics oneMetrics = fineAll.simulateStep(fineOne, oneConfig);
+    if (oneMetrics.is_partial() || oneMetrics.get_n_workers() != 1 ||
+        !flocksMatch(sequentialOne, fineOne, 1)) {
+        return false;
+    }
+
+    if (FineGrainedScheme::resolveContextCount(8, 0) != 8 ||
+        FineGrainedScheme::resolveContextCount(8, 3) != 3 ||
+        FineGrainedScheme::resolveContextCount(8, 20) != 8 ||
+        FineGrainedScheme::resolveContextCount(0, 5) != 0) {
+        return false;
+    }
+
+    const FlockingConfig config = makeTestConfig(8);
+    Flock sequentialFlock(config, 21);
+    Flock clampedFlock = sequentialFlock;
+    sequential.simulateStep(sequentialFlock, config);
+    FineGrainedScheme clamped(20);
+    const BoidsMetrics clampedMetrics = clamped.simulateStep(clampedFlock, config);
+    return !clampedMetrics.is_partial() &&
+           clampedMetrics.get_n_workers() == 8 &&
+           flocksMatch(sequentialFlock, clampedFlock, 8);
 }
 
 /**
@@ -126,7 +262,12 @@ int main() {
     };
 
     check(testObjectInterface(), "contrato object_interface");
-    check(testFineGrainedEquivalence(), "equivalencia fine-grained");
+    check(testFineGrainedPartialEquivalence(), "equivalencia fine-grained parcial");
+    check(testFineGrainedFullEquivalence(), "equivalencia fine-grained completa");
+    check(testFineGrainedTermination(), "terminacion del scheduler fine-grained");
+    check(testFineGrainedSingleQuantum(), "quantum de un candidato");
+    check(testFineGrainedRoundRobin(), "round-robin entre contextos");
+    check(testFineGrainedEdgeCases(), "bordes fine-grained");
     check(testCoarseGrainedEquivalence(), "equivalencia coarse-grained");
 
     if (failures == 0) {

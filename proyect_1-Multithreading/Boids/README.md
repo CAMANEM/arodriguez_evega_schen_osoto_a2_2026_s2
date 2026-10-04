@@ -81,8 +81,9 @@ Ejemplos:
 ./build/boids/boids --scheme sequential --gui
 ./build/boids/boids --scheme cmp --gui --boids 300
 
-# Parámetros del problema
-./build/boids/boids --scheme coarse --workers 8 --boids 200 --steps 1000
+# Fine-grained simulado (flock completo; --partial N para demos)
+./build/boids/boids --scheme fine --validate --boids 40
+./build/boids/boids --scheme fine --partial 20 --steps 1
 
 # Ayuda
 ./build/boids/boids --help
@@ -103,7 +104,7 @@ ffmpeg -framerate 15 -i frames/frame_%03d.ppm -pix_fmt yuv420p flock.mp4
 |---|---|
 | Sistema base sin hilos | `SequentialScheme` (`--scheme sequential`) |
 | Variables críticas | `FlockingConfig` + flags CLI (`--boids`, radios, pesos) |
-| Dummy fine-grained | `FineGrainedScheme` (`--scheme fine --partial N`) |
+| Fine-grained simulado | `FineGrainedScheme` (`--scheme fine`, `--partial N` opcional) |
 | Dummy coarse-grained | `CoarseGrainedScheme` (`--scheme coarse --workers N`) |
 | Aproximación SMT | `SmtScheme` (`--scheme smt --oversubscribe N`) |
 | Aproximación CMP | `CmpScheme` (`--scheme cmp`) |
@@ -122,7 +123,7 @@ Los diagramas y la explicación completa están en
 - `perceptionRadius` y `separationRadius`: cambian cuántos vecinos contribuyen
   realmente a las reglas y producen una carga dependiente de la densidad.
 - Cantidad de trabajadores: coarse, SMT y CMP dividen los boids en bloques;
-  fine crea un contexto virtual por cada boid de su demostración parcial.
+  fine crea un contexto virtual por boid (o por el subconjunto `--partial`).
 - Los pesos de separación, alineamiento y cohesión cambian el comportamiento
   visual, pero no la complejidad de la búsqueda actual.
 

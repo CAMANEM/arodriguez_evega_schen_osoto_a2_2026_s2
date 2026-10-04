@@ -34,11 +34,15 @@ void printMetricsRow(const BoidsMetrics& metrics) {
     const std::string workerCount =
         std::to_string(metrics.get_n_workers()) +
         (metrics.uses_virtual_workers() ? " virtuales" : "");
+    std::string boidsCell = std::to_string(metrics.get_boids_processed());
+    if (metrics.is_partial()) {
+        boidsCell += " parcial";
+    }
     std::cout << std::left << std::setw(50) << metrics.get_scheme_name()
               << std::setw(16) << workerCount
               << std::setw(15) << std::fixed << std::setprecision(3)
               << metrics.elapsed_milliseconds()
-              << std::setw(12) << metrics.get_boids_processed() << "\n";
+              << std::setw(16) << boidsCell << "\n";
 }
 
 bool flocksMatchApprox(const Flock& a, const Flock& b, int count = -1,
@@ -83,8 +87,8 @@ int runCompare(const CliOptions& options) {
     std::cout << std::left << std::setw(50) << "Esquema"
               << std::setw(16) << "Trabajadores"
               << std::setw(15) << "Tiempo (ms)"
-              << std::setw(12) << "Boids" << "\n";
-    std::cout << std::string(93, '-') << "\n";
+              << std::setw(16) << "Boids" << "\n";
+    std::cout << std::string(97, '-') << "\n";
 
     Flock referenceFlock = initialFlock;
     {
@@ -95,12 +99,13 @@ int runCompare(const CliOptions& options) {
     {
         Flock flock = initialFlock;
         FineGrainedScheme scheme(options.finePartialBoids);
-        printMetricsRow(scheme.simulateStep(flock, config));
-        std::cout << "  -> Validacion parcial (" << options.finePartialBoids
-                  << " boids contra baseline): "
-                  << (flocksMatchApprox(flock, referenceFlock, options.finePartialBoids)
-                          ? "SI"
-                          : "NO")
+        const BoidsMetrics metrics = scheme.simulateStep(flock, config);
+        printMetricsRow(metrics);
+        const int comparedBoids = metrics.get_boids_processed();
+        std::cout << "  -> Validacion Fine vs secuencial ("
+                  << comparedBoids << (metrics.is_partial() ? " boids, parcial" : " boids")
+                  << "): "
+                  << (flocksMatchApprox(flock, referenceFlock, comparedBoids) ? "SI" : "NO")
                   << "\n";
     }
 
@@ -196,7 +201,7 @@ int runHeadless(const CliOptions& options) {
 
         if (options.validate && step == 0) {
             const int compareCount =
-                options.scheme == RunScheme::Fine ? options.finePartialBoids : -1;
+                metrics.is_partial() ? metrics.get_boids_processed() : -1;
             std::cout << "  -> Validacion vs secuencial: "
                       << (flocksMatchApprox(flock, referenceFlock, compareCount) ? "SI"
                                                                                  : "NO")

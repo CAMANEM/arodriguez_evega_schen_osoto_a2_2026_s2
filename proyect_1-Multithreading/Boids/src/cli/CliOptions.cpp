@@ -110,7 +110,7 @@ void printCliHelp(const char* argv0) {
         << "Modelo de ejecucion:\n"
         << "  --scheme sequential|fine|coarse|smt|cmp|compare\n"
         << "      sequential  Sistema base sin hilos\n"
-        << "      fine        Dummy grano fino (parcial)\n"
+        << "      fine        Grano fino simulado (round-robin por vecino)\n"
         << "      coarse      Dummy grano grueso\n"
         << "      smt         Dummy SMT (sobresuscripcion)\n"
         << "      cmp         Dummy CMP (hilos ~ nucleos logicos)\n"
@@ -134,7 +134,7 @@ void printCliHelp(const char* argv0) {
         << "\n"
         << "Trabajadores por modelo:\n"
         << "  --workers N          Hilos coarse (default: 4)\n"
-        << "  --partial N          Boids parciales en fine (default: 20)\n"
+        << "  --partial N          Limite de contextos en fine (0 = flock completo)\n"
         << "  --oversubscribe N    Factor SMT (default: 2)\n"
         << "\n"
         << "Salida / evidencia:\n"
@@ -148,6 +148,8 @@ void printCliHelp(const char* argv0) {
         << "  " << argv0 << " --scheme cmp --gui\n"
         << "  " << argv0 << " --scheme sequential --gui --boids 250\n"
         << "  " << argv0 << " --scheme compare --export-frames frames --steps 350\n"
+        << "  " << argv0 << " --scheme fine --validate --boids 40\n"
+        << "  " << argv0 << " --scheme fine --partial 20 --steps 1\n"
         << "  " << argv0 << " --scheme coarse --workers 8 --steps 1000 --boids 200\n";
 }
 

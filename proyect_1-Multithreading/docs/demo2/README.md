@@ -5,8 +5,8 @@
 1. El diseño preliminar se convirtió en un sistema secuencial ejecutable.
 2. Se separaron cálculo de fuerzas e integración para conservar un estado de
    lectura estable durante cada paso.
-3. Se implementaron dummies medibles para fine-grained, coarse-grained, SMT y
-   CMP.
+3. Se implementaron dummies medibles para coarse-grained, SMT y CMP, y un
+   Fine-Grained completo (simulación cooperativa, no dummy de hilos).
 4. Se añadieron modalidad gráfica con Raylib y modalidad no gráfica con PPM.
 5. `Boid` y `BoidsMetrics` se alinearon con las interfaces de `shared`.
 6. Se añadieron validaciones automáticas contra el resultado secuencial.
@@ -90,7 +90,10 @@ flowchart TB
     blocks --> cmp["CMP: procesadores lógicos disponibles"]
 ```
 
-- Fine-grained es una simulación cooperativa y parcial. No crea hilos del SO.
+- Fine-grained es una **simulación cooperativa** en un solo hilo del SO. No
+  crea `std::thread`. Cada boid es un contexto virtual; el quantum es un
+  vecino candidato; el scheduler es round-robin aunque el contexto actual no
+  haya terminado. Sirve para contrastar el modelo y medir overhead, no speedup.
 - Coarse-grained crea hilos tradicionales y espera en `join()`.
 - SMT aproxima contención mediante sobresuscripción.
 - CMP ejecuta hilos en paralelo, pero C++ no distingue núcleos físicos de
@@ -115,7 +118,7 @@ flowchart TB
 | Cambios significativos | Lista inicial y separación por estrategias |
 | Sistema base sin hilos | `SequentialScheme` (`boids --scheme sequential`) |
 | Variables de paralelización | Tabla anterior, `FlockingConfig` y flags CLI |
-| Dummy fine | `FineGrainedScheme`, validado sobre su subconjunto |
+| Dummy fine | `FineGrainedScheme` (`--scheme fine`), flock completo o `--partial N` |
 | Dummy coarse | `CoarseGrainedScheme`, validado contra todo el baseline |
 | Dummy SMT | `SmtScheme`, validado contra todo el baseline |
 | Dummy CMP | `CmpScheme`, validado contra todo el baseline |
@@ -150,3 +153,121 @@ Para la defensa de Demo 2:
 Las cifras de esta demostración prueban funcionalidad, no significancia
 estadística. La campaña final debe realizar al menos 200 ejecuciones por caso,
 calcular intervalos de confianza y perfilar directamente sobre hardware físico.
+
+## Fine-Grained — modelo, flujo y defensa
+
+Fine-Grained en hardware real es un mecanismo **microarquitectónico**. El
+planificador del SO no cambia de contexto en cada ciclo, por eso este esquema
+**simula** N hilos lógicos dentro de **un** hilo del SO.
+
+### Flujo de un paso
+
+```mermaid
+flowchart TB
+    subgraph paso["FineGrainedScheme::simulateStep"]
+        A["Leer estado inicial del Flock<br/>(inmutable durante el cálculo)"] --> B["Crear N SteeringContext<br/>(1 contexto virtual por boid)"]
+        B --> C["Scheduler cooperativo round-robin"]
+        C --> D{"¿Queda algún contexto<br/>no terminado?"}
+        D -->|Sí| E["Seleccionar siguiente contexto activo"]
+        E --> F["Ejecutar 1 quantum:<br/>stepOnce()"]
+        F --> G["Acumular contribuciones parciales"]
+        G --> C
+        D -->|No| H["Para cada contexto:<br/>computeFinalSteering()"]
+        H --> I["Barrera lógica de fin de cálculo"]
+        I --> J["Aplicar integraciones al Flock"]
+        J --> K["Emitir BoidsMetrics"]
+    end
+```
+
+### Quantum mínimo
+
+```mermaid
+flowchart LR
+    Q["Quantum = 1 candidato"] --> R["Leer boid propio"]
+    R --> S["Leer candidato actual"]
+    S --> T{"¿en radio de percepción?"}
+    T -->|Sí| U["Acumular alignment/cohesion/separation"]
+    T -->|No| V["No aportar"]
+    U --> W["Avanzar cursor (saltar self)"]
+    V --> W
+    W --> X["Ceder turno aunque quede trabajo"]
+```
+
+### Timeline round-robin (3 boids)
+
+```mermaid
+sequenceDiagram
+    participant Sch as Scheduler Fine-Grained
+    participant A as Contexto A (boid 0)
+    participant B as Contexto B (boid 1)
+    participant C as Contexto C (boid 2)
+
+    Note over Sch,C: Estado del flock = solo lectura
+    Sch->>A: stepOnce (candidato 1)
+    Sch->>B: stepOnce (candidato 1)
+    Sch->>C: stepOnce (candidato 1)
+    Sch->>A: stepOnce (candidato 2) → finished
+    Sch->>B: stepOnce (candidato 2) → finished
+    Sch->>C: stepOnce (candidato 2) → finished
+    Note over Sch,C: Barrera lógica + integrate
+```
+
+### Contraste correcto vs incorrecto
+
+```mermaid
+flowchart TB
+    subgraph correcto["CORRECTO — Fine-Grained simulado"]
+        OS1["1 hilo del SO"] --> SCH["Scheduler round-robin en software"]
+        SCH --> V0["Contexto virtual boid 0"]
+        SCH --> V1["Contexto virtual boid 1"]
+        SCH --> VN["Contexto virtual boid N"]
+    end
+
+    subgraph incorrecto["INCORRECTO para Fine-Grained"]
+        T0["std::thread por boid 0"]
+        T1["std::thread por boid 1"]
+        TN["std::thread por boid N"]
+        OSS["Scheduler del OS (grano grueso)"]
+        T0 --> OSS
+        T1 --> OSS
+        TN --> OSS
+    end
+```
+
+### Clases del esquema
+
+```mermaid
+classDiagram
+    class FlockingScheme {
+        <<interface>>
+        +simulateStep(flock, config) BoidsMetrics
+        +getSchemeName() string
+        +getExecutionModel() execution_model
+    }
+    class FineGrainedScheme {
+        +simulateStep(flock, config) BoidsMetrics
+        +runOneRound(contexts) bool
+        +runRoundRobinUntilDone(contexts)
+    }
+    class SteeringContext {
+        +stepOnce() bool
+        +isFinished() bool
+        +computeFinalSteering() Vector2D
+    }
+    FlockingScheme <|-- FineGrainedScheme
+    FineGrainedScheme --> SteeringContext
+```
+
+### Guion corto de defensa
+
+1. El enunciado exige Fine-Grained por **simulación de cuantums**, no por hilos del SO.
+2. En Boids, cada boid es un **contexto virtual** (`SteeringContext`).
+3. Un quantum = revisar **un vecino** (`stepOnce`).
+4. El scheduler hace **round-robin** aunque el contexto actual no haya terminado.
+5. Al final se integra, igual que el baseline, para preservar correctitud.
+6. En benchmarks, Fine muestra **el modelo y su overhead**; coarse/SMT/CMP
+   muestran paralelismo real o aproximado.
+
+Variables que encarecen Fine: `boidCount` (O(N²) más el costo del scheduler),
+radios de percepción/separación, y `--partial` (cantidad de contextos).
+`boids --scheme fine` usa el flock completo; `--partial N` acota demos.

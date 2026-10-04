@@ -22,14 +22,16 @@ public:
      * @param elapsedMilliseconds Tiempo de pared del paso.
      * @param boidsProcessed Cantidad de boids actualizados.
      * @param virtualWorkers Indica si workers representa contextos simulados.
+     * @param isPartial true si no se actualizó el enjambre completo.
      */
     BoidsMetrics(execution_model model, const std::string& schemeName, int workers,
                  double elapsedMilliseconds, int boidsProcessed,
-                 bool virtualWorkers = false)
+                 bool virtualWorkers = false, bool isPartial = false)
         : metrics_interface(model, workers),
           schemeName_(schemeName),
           boidsProcessed_(boidsProcessed),
-          virtualWorkers_(virtualWorkers) {
+          virtualWorkers_(virtualWorkers),
+          isPartial_(isPartial) {
         record_time(elapsedMilliseconds / 1000.0);
     }
 
@@ -45,10 +47,14 @@ public:
     /** @return true cuando el conteo representa contextos virtuales. */
     bool uses_virtual_workers() const { return virtualWorkers_; }
 
+    /** @return true si esta ejecución no actualizó todos los boids. */
+    bool is_partial() const { return isPartial_; }
+
 private:
     std::string schemeName_;
     int boidsProcessed_;
     bool virtualWorkers_;
+    bool isPartial_;
 };
 
 #endif // BOIDS_METRICS_HPP

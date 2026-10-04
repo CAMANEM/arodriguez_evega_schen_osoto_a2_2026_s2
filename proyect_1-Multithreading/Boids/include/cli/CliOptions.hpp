@@ -36,7 +36,7 @@ struct CliOptions {
     int steps = 1;
     int seed = 42;
     int workers = 4;
-    int finePartialBoids = 20;
+    int finePartialBoids = 0;
     unsigned int smtOversubscribe = 2;
     int frameInterval = 5;
     std::string exportFramesDir;
