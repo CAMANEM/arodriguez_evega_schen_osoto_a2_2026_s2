@@ -28,12 +28,16 @@ public:
      * @param stallCount Cantidad de stalls didácticos inyectados (coarse).
      * @param stallTimeMs Tiempo acumulado en stalls (ms).
      * @param computeTimeMs Tiempo estimado de cómputo (elapsed - stall), ms.
+     * @param oversubscribeFactor Factor SMT usado (0 = no aplica).
+     * @param logicalProcessors Procesadores lógicos L reportados (0 = no aplica).
      */
     BoidsMetrics(execution_model model, const std::string& schemeName, int workers,
                  double elapsedMilliseconds, int boidsProcessed,
                  bool virtualWorkers = false, bool isPartial = false,
                  int stallCount = 0, double stallTimeMs = 0.0,
-                 double computeTimeMs = -1.0)
+                 double computeTimeMs = -1.0,
+                 unsigned int oversubscribeFactor = 0,
+                 unsigned int logicalProcessors = 0)
         : metrics_interface(model, workers),
           schemeName_(schemeName),
           boidsProcessed_(boidsProcessed),
@@ -43,7 +47,9 @@ public:
           stallTimeMs_(stallTimeMs),
           computeTimeMs_(computeTimeMs < 0.0
                              ? std::max(0.0, elapsedMilliseconds - stallTimeMs)
-                             : computeTimeMs) {
+                             : computeTimeMs),
+          oversubscribeFactor_(oversubscribeFactor),
+          logicalProcessors_(logicalProcessors) {
         record_time(elapsedMilliseconds / 1000.0);
     }
 
@@ -71,6 +77,16 @@ public:
     /** @return Tiempo estimado de cómputo (elapsed - stall), en milisegundos. */
     double get_compute_time_ms() const { return computeTimeMs_; }
 
+    /**
+     * @return Factor de sobre-suscripción SMT (`F`), o 0 si el esquema no lo usa.
+     */
+    unsigned int get_oversubscribe_factor() const { return oversubscribeFactor_; }
+
+    /**
+     * @return Procesadores lógicos `L` reportados para SMT, o 0 si no aplica.
+     */
+    unsigned int get_logical_processors() const { return logicalProcessors_; }
+
 private:
     std::string schemeName_;
     int boidsProcessed_;
@@ -79,6 +95,8 @@ private:
     int stallCount_;
     double stallTimeMs_;
     double computeTimeMs_;
+    unsigned int oversubscribeFactor_;
+    unsigned int logicalProcessors_;
 };
 
 #endif // BOIDS_METRICS_HPP

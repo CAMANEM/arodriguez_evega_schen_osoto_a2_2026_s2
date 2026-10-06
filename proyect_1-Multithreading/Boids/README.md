@@ -109,7 +109,7 @@ ffmpeg -framerate 15 -i frames/frame_%03d.ppm -pix_fmt yuv420p flock.mp4
 | Fine-grained simulado | `FineGrainedScheme` (`--scheme fine`, `--partial N` opcional) |
 | Dummy coarse-grained | `CoarseGrainedScheme` (`--scheme coarse --workers N`) |
 | Stalls coarse | `--stall-every`, `--stall-probability`, `--stall-ms`, `--stall-ms-min/max` |
-| Aproximación SMT | `SmtScheme` (`--scheme smt --oversubscribe N`) |
+| Aproximación SMT | `SmtScheme` (`--scheme smt --oversubscribe F`, default 2); ver [`../docs/demo2/smt.md`](../docs/demo2/smt.md) |
 | Aproximación CMP | `CmpScheme` (`--scheme cmp`) |
 | Mediciones | `BoidsMetrics`, `metrics_interface` y `Timer` |
 | Modalidad no gráfica | `boids --no-gui` (default) |
@@ -140,8 +140,9 @@ Los diagramas y la explicación completa están en
   Opcionalmente inyecta stalls didácticos solo tras boid completo
   con un checkpoint manual que **evidencia** el save/resume; el SO ya conserva
   el contexto del hilo de forma implícita. Detalle: [`../docs/demo2/coarse-grained.md`](../docs/demo2/coarse-grained.md).
-- SMT sobresuscribe procesadores lógicos. Esto es una aproximación de software,
-  no sustituye la comparación física con SMT habilitado y deshabilitado.
+- SMT sobresuscribe procesadores lógicos (`T = L × F`). Es una aproximación de
+  software, no Hyper-Threading: el contraste real es BIOS ON/OFF + perfilado.
+  Detalle: [`../docs/demo2/smt.md`](../docs/demo2/smt.md).
 - CMP usa `std::thread::hardware_concurrency()`. La API informa procesadores
   lógicos disponibles; no garantiza que sean núcleos físicos.
 - `Boid` implementa `object_interface` y `BoidsMetrics` deriva de

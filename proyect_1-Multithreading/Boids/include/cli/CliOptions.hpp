@@ -37,7 +37,7 @@ struct CliOptions {
     int seed = 42;
     int workers = 4;
     int finePartialBoids = 0;
-    unsigned int smtOversubscribe = 2;
+    unsigned int smtOversubscribe = 2; // Factor F: T = L x F (default 2).
     int frameInterval = 5;
     std::string exportFramesDir;
 

@@ -98,7 +98,8 @@ flowchart TB
   stalls didácticos solo tras terminar un boid completo, con
   checkpoint manual explícito frente al save implícito del SO. Ver
   [coarse-grained.md](coarse-grained.md).
-- SMT aproxima contención mediante sobresuscripción.
+- SMT aproxima contención mediante sobresuscripción (`T = L × F`). Ver
+  [smt.md](smt.md) (incluye checklist BIOS ON/OFF + perf/VTune).
 - CMP ejecuta hilos en paralelo, pero C++ no distingue núcleos físicos de
   hilos SMT mediante `hardware_concurrency()`.
 
@@ -123,7 +124,7 @@ flowchart TB
 | Variables de paralelización | Tabla anterior, `FlockingConfig` y flags CLI |
 | Dummy fine | `FineGrainedScheme` (`--scheme fine`), flock completo o `--partial N` |
 | Dummy coarse | `CoarseGrainedScheme`, validado contra todo el baseline |
-| Dummy SMT | `SmtScheme`, validado contra todo el baseline |
+| SMT (sobre-suscripción) | `SmtScheme` (`--oversubscribe F`), validado vs baseline; [smt.md](smt.md) |
 | Dummy CMP | `CmpScheme`, validado contra todo el baseline |
 | Mediciones | Tabla de `boids --scheme compare` |
 | Modalidad no gráfica | `boids --no-gui` y frames PPM |

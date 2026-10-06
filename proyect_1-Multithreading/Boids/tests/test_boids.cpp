@@ -12,6 +12,7 @@
 #include "core/Flock.hpp"
 #include "core/FlockingConfig.hpp"
 #include "core/SequentialScheme.hpp"
+#include "core/SmtScheme.hpp"
 #include "core/SteeringContext.hpp"
 #include "core/Vector2D.hpp"
 
@@ -413,6 +414,140 @@ bool testCliCoarseStallParameters() {
     return nearlyEqual(ranged.stallMsMin, 1.0) && nearlyEqual(ranged.stallMsMax, 3.0);
 }
 
+/**
+ * @brief Equivalencia SMT vs Sequential (misma seed/config).
+ */
+bool testSmtEquivalence() {
+    const FlockingConfig config = makeTestConfig(24);
+    const Flock initial(config, 53);
+    Flock sequentialFlock = initial;
+    Flock smtFlock = initial;
+
+    SequentialScheme sequential;
+    SmtScheme smt(2);
+    sequential.simulateStep(sequentialFlock, config);
+    const BoidsMetrics metrics = smt.simulateStep(smtFlock, config);
+
+    return metrics.get_model() == execution_model::smt &&
+           metrics.get_oversubscribe_factor() == 2u &&
+           metrics.get_logical_processors() == SmtScheme::logicalProcessorCount() &&
+           !metrics.uses_virtual_workers() &&
+           metrics.get_stall_count() == 0 &&
+           flocksMatch(sequentialFlock, smtFlock, config.getBoidCount());
+}
+
+/**
+ * @brief Default F=2 pide T = 2*L; F=1 pide T = L (contraste vs CMP).
+ */
+bool testSmtOversubscribePolicy() {
+    const unsigned int logical = SmtScheme::logicalProcessorCount();
+
+    SmtScheme defaultFactor;
+    if (defaultFactor.getOversubscriptionFactor() != 2u ||
+        defaultFactor.requestedThreadCount() != logical * 2u) {
+        return false;
+    }
+
+    SmtScheme factorOne(1);
+    if (factorOne.getOversubscriptionFactor() != 1u ||
+        factorOne.requestedThreadCount() != logical) {
+        return false;
+    }
+
+    // Clamp de F=0 → 1
+    SmtScheme clamped(0);
+    if (clamped.getOversubscriptionFactor() != 1u ||
+        clamped.requestedThreadCount() != logical) {
+        return false;
+    }
+
+    // Con suficientes boids, workers efectivos = L*F.
+    const int enoughBoids = static_cast<int>(logical * 4u);
+    const FlockingConfig config = makeTestConfig(enoughBoids);
+    Flock flock(config, 19);
+    const BoidsMetrics metrics = defaultFactor.simulateStep(flock, config);
+    return metrics.get_n_workers() == static_cast<int>(logical * 2u) &&
+           metrics.get_oversubscribe_factor() == 2u;
+}
+
+/**
+ * @brief Bordes: más hilos que boids; N=1; F=4 sigue equivalente.
+ */
+bool testSmtEdgeCases() {
+    const FlockingConfig config = makeTestConfig(5);
+    const Flock initial(config, 31);
+
+    Flock sequentialFlock = initial;
+    SequentialScheme sequential;
+    sequential.simulateStep(sequentialFlock, config);
+
+    // Más hilos pedidos que boids → no se lanzan workers vacíos.
+    {
+        Flock flock = initial;
+        SmtScheme smt(64);
+        const BoidsMetrics metrics = smt.simulateStep(flock, config);
+        if (metrics.get_n_workers() != config.getBoidCount() ||
+            !flocksMatch(sequentialFlock, flock, config.getBoidCount())) {
+            return false;
+        }
+    }
+
+    // Un solo boid
+    {
+        const FlockingConfig oneConfig = makeTestConfig(1);
+        Flock sequentialOne(oneConfig, 4);
+        Flock smtOne = sequentialOne;
+        sequential.simulateStep(sequentialOne, oneConfig);
+        SmtScheme smt(2);
+        const BoidsMetrics metrics = smt.simulateStep(smtOne, oneConfig);
+        if (metrics.get_n_workers() != 1 ||
+            !flocksMatch(sequentialOne, smtOne, 1)) {
+            return false;
+        }
+    }
+
+    // F=4 sigue alineado al secuencial
+    {
+        Flock flock = initial;
+        SmtScheme smt(4);
+        const BoidsMetrics metrics = smt.simulateStep(flock, config);
+        if (metrics.get_oversubscribe_factor() != 4u ||
+            !flocksMatch(sequentialFlock, flock, config.getBoidCount())) {
+            return false;
+        }
+    }
+
+    // F=1: sin sobre-suscripción extra → T pedido = L (contraste conceptual vs CMP).
+    {
+        SmtScheme smt(1);
+        if (smt.requestedThreadCount() != SmtScheme::logicalProcessorCount()) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+/**
+ * @brief CLI parsea --scheme smt y --oversubscribe (incluye clamp F=0).
+ */
+bool testCliSmtParameters() {
+    const CliOptions defaults = parseArgs({"--scheme", "smt"});
+    if (defaults.scheme != RunScheme::Smt || defaults.smtOversubscribe != 2u ||
+        defaults.gui) {
+        return false;
+    }
+
+    const CliOptions custom = parseArgs(
+        {"--scheme=smt", "--oversubscribe=4", "--boids=80", "--no-gui"});
+    if (custom.smtOversubscribe != 4u || custom.boidCount != 80 || custom.gui) {
+        return false;
+    }
+
+    const CliOptions clamped = parseArgs({"--scheme", "smt", "--oversubscribe", "0"});
+    return clamped.smtOversubscribe == 1u;
+}
+
 } // namespace
 
 /**
@@ -440,6 +575,10 @@ int main() {
     check(testCoarseGrainedRandomStallEquivalence(), "equivalencia coarse stall aleatorio");
     check(testCoarseGrainedEdgeCases(), "bordes coarse-grained");
     check(testCliCoarseStallParameters(), "CLI parametros stall coarse");
+    check(testSmtEquivalence(), "equivalencia smt");
+    check(testSmtOversubscribePolicy(), "politica oversubscribe smt");
+    check(testSmtEdgeCases(), "bordes smt");
+    check(testCliSmtParameters(), "CLI parametros smt");
 
     if (failures == 0) {
         std::cout << "Todas las pruebas de Boids pasaron.\n";

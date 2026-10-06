@@ -47,6 +47,19 @@ protected:
     virtual unsigned int computeThreadCount(const Flock& flock) const = 0;
 
     /**
+     * @brief Construye las métricas del paso tras join e integración.
+     *
+     * Las subclases pueden enriquecer campos opcionales (p. ej. factor SMT)
+     * sin reescribir la orquestación de hilos.
+     * @param workersUsed Hilos efectivos lanzados (sin workers vacíos).
+     * @param elapsedMilliseconds Tiempo de pared del paso.
+     * @param boidsProcessed Cantidad de boids actualizados.
+     * @return Métricas alineadas a `BoidsMetrics` / `metrics_interface`.
+     */
+    virtual BoidsMetrics makeStepMetrics(int workersUsed, double elapsedMilliseconds,
+                                         int boidsProcessed) const;
+
+    /**
      * @brief Calcula las fuerzas de dirección del rango de boids
      *        [startIndex, endIndex) y las escribe en su porción disjunta
      *        del vector de fuerzas compartido.

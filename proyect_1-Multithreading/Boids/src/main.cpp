@@ -49,6 +49,11 @@ void printMetricsRow(const BoidsMetrics& metrics) {
                   << " stallMs=" << std::setprecision(3) << metrics.get_stall_time_ms()
                   << " computeMs=" << metrics.get_compute_time_ms();
     }
+    if (metrics.get_model() == execution_model::smt) {
+        std::cout << "  L=" << metrics.get_logical_processors()
+                  << " F=" << metrics.get_oversubscribe_factor()
+                  << " T=" << metrics.get_n_workers();
+    }
     std::cout << "\n";
 }
 

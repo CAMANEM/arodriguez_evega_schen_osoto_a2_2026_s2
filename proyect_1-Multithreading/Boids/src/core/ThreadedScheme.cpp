@@ -14,6 +14,12 @@ void ThreadedScheme::computeForceBlock(const Flock& flock, const FlockingConfig&
     }
 }
 
+BoidsMetrics ThreadedScheme::makeStepMetrics(int workersUsed, double elapsedMilliseconds,
+                                             int boidsProcessed) const {
+    return BoidsMetrics(getExecutionModel(), getSchemeName(), workersUsed,
+                        elapsedMilliseconds, boidsProcessed);
+}
+
 BoidsMetrics ThreadedScheme::simulateStep(Flock& flock, const FlockingConfig& config) {
     const unsigned int threadCount = std::max(1u, computeThreadCount(flock));
     const int totalBoids = flock.getBoidCount();
@@ -51,6 +57,5 @@ BoidsMetrics ThreadedScheme::simulateStep(Flock& flock, const FlockingConfig& co
     }
 
     const double elapsedMs = timer.stopAndGetMilliseconds();
-    return BoidsMetrics(getExecutionModel(), getSchemeName(),
-                        static_cast<int>(workers.size()), elapsedMs, totalBoids);
+    return makeStepMetrics(static_cast<int>(workers.size()), elapsedMs, totalBoids);
 }
