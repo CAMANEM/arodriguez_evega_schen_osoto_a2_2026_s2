@@ -7,6 +7,7 @@
 #include "object_interface.hpp"
 #include "core/Boid.hpp"
 #include "core/BoidsMetrics.hpp"
+#include "core/CmpScheme.hpp"
 #include "core/CoarseGrainedScheme.hpp"
 #include "core/FineGrainedScheme.hpp"
 #include "core/Flock.hpp"
@@ -548,6 +549,138 @@ bool testCliSmtParameters() {
     return clamped.smtOversubscribe == 1u;
 }
 
+/**
+ * @brief Equivalencia CMP vs Sequential (misma seed/config).
+ */
+bool testCmpEquivalence() {
+    const FlockingConfig config = makeTestConfig(24);
+    const Flock initial(config, 61);
+    Flock sequentialFlock = initial;
+    Flock cmpFlock = initial;
+
+    SequentialScheme sequential;
+    CmpScheme cmp;
+    sequential.simulateStep(sequentialFlock, config);
+    const BoidsMetrics metrics = cmp.simulateStep(cmpFlock, config);
+
+    return metrics.get_model() == execution_model::cmp &&
+           metrics.get_logical_processors() == CmpScheme::logicalProcessorCount() &&
+           metrics.get_oversubscribe_factor() == 0u &&
+           !metrics.uses_virtual_workers() &&
+           metrics.get_stall_count() == 0 &&
+           flocksMatch(sequentialFlock, cmpFlock, config.getBoidCount());
+}
+
+/**
+ * @brief Política CMP: T pedido = L; con suficientes boids, workers = L.
+ */
+bool testCmpThreadPolicy() {
+    const unsigned int logical = CmpScheme::logicalProcessorCount();
+    if (logical < 1u) {
+        return false;
+    }
+
+    // Con suficientes boids, workers efectivos = L.
+    const int enoughBoids = static_cast<int>(logical * 4u);
+    const FlockingConfig config = makeTestConfig(enoughBoids);
+    Flock flock(config, 23);
+    CmpScheme cmp;
+    const BoidsMetrics metrics = cmp.simulateStep(flock, config);
+    return metrics.get_n_workers() == static_cast<int>(logical) &&
+           metrics.get_logical_processors() == logical &&
+           metrics.get_oversubscribe_factor() == 0u;
+}
+
+/**
+ * @brief Bordes: N < L; N=0/1; contraste T(CMP)=L vs T(SMT)=L*F.
+ */
+bool testCmpEdgeCases() {
+    const unsigned int logical = CmpScheme::logicalProcessorCount();
+    SequentialScheme sequential;
+
+    // Más lógicos que boids → no se lanzan workers vacíos.
+    {
+        const FlockingConfig config = makeTestConfig(3);
+        const Flock initial(config, 17);
+        Flock sequentialFlock = initial;
+        Flock cmpFlock = initial;
+        sequential.simulateStep(sequentialFlock, config);
+        CmpScheme cmp;
+        const BoidsMetrics metrics = cmp.simulateStep(cmpFlock, config);
+        if (metrics.get_n_workers() != config.getBoidCount() ||
+            !flocksMatch(sequentialFlock, cmpFlock, config.getBoidCount())) {
+            return false;
+        }
+    }
+
+    // Un solo boid
+    {
+        const FlockingConfig oneConfig = makeTestConfig(1);
+        Flock sequentialOne(oneConfig, 4);
+        Flock cmpOne = sequentialOne;
+        sequential.simulateStep(sequentialOne, oneConfig);
+        CmpScheme cmp;
+        const BoidsMetrics metrics = cmp.simulateStep(cmpOne, oneConfig);
+        if (metrics.get_n_workers() != 1 ||
+            !flocksMatch(sequentialOne, cmpOne, 1)) {
+            return false;
+        }
+    }
+
+    // Enjambre vacío
+    {
+        const FlockingConfig emptyConfig = makeTestConfig(0);
+        Flock emptyFlock(emptyConfig, 1);
+        CmpScheme cmp;
+        const BoidsMetrics metrics = cmp.simulateStep(emptyFlock, emptyConfig);
+        if (metrics.get_boids_processed() != 0 || metrics.get_n_workers() != 0) {
+            return false;
+        }
+    }
+
+    // Contraste smoke: mismo N → CMP reporta T≈L; SMT con F=2 reporta T≈2L.
+    {
+        const int enoughBoids = static_cast<int>(logical * 4u);
+        const FlockingConfig config = makeTestConfig(enoughBoids);
+        Flock cmpFlock(config, 19);
+        Flock smtFlock = cmpFlock;
+        CmpScheme cmp;
+        SmtScheme smt(2);
+        const BoidsMetrics cmpMetrics = cmp.simulateStep(cmpFlock, config);
+        const BoidsMetrics smtMetrics = smt.simulateStep(smtFlock, config);
+        if (cmpMetrics.get_n_workers() != static_cast<int>(logical) ||
+            smtMetrics.get_n_workers() != static_cast<int>(logical * 2u) ||
+            cmpMetrics.get_n_workers() == smtMetrics.get_n_workers()) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+/**
+ * @brief CLI selecciona --scheme cmp; --workers no redefine la política CMP.
+ */
+bool testCliCmpParameters() {
+    const CliOptions defaults = parseArgs({"--scheme", "cmp"});
+    if (defaults.scheme != RunScheme::Cmp || defaults.gui) {
+        return false;
+    }
+
+    const CliOptions custom = parseArgs(
+        {"--scheme=cmp", "--boids=90", "--steps=10", "--seed=5", "--no-gui"});
+    if (custom.scheme != RunScheme::Cmp || custom.boidCount != 90 ||
+        custom.steps != 10 || custom.seed != 5 || custom.gui) {
+        return false;
+    }
+
+    // --workers existe en CLI global (coarse) pero no cambia el esquema cmp.
+    const CliOptions withWorkers = parseArgs(
+        {"--scheme", "cmp", "--workers", "99", "--gui"});
+    return withWorkers.scheme == RunScheme::Cmp && withWorkers.workers == 99 &&
+           withWorkers.gui;
+}
+
 } // namespace
 
 /**
@@ -579,6 +712,10 @@ int main() {
     check(testSmtOversubscribePolicy(), "politica oversubscribe smt");
     check(testSmtEdgeCases(), "bordes smt");
     check(testCliSmtParameters(), "CLI parametros smt");
+    check(testCmpEquivalence(), "equivalencia cmp");
+    check(testCmpThreadPolicy(), "politica T=L cmp");
+    check(testCmpEdgeCases(), "bordes cmp");
+    check(testCliCmpParameters(), "CLI parametros cmp");
 
     if (failures == 0) {
         std::cout << "Todas las pruebas de Boids pasaron.\n";

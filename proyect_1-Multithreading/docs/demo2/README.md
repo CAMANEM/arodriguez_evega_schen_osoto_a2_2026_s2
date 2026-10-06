@@ -100,8 +100,9 @@ flowchart TB
   [coarse-grained.md](coarse-grained.md).
 - SMT aproxima contención mediante sobresuscripción (`T = L × F`). Ver
   [smt.md](smt.md) (incluye checklist BIOS ON/OFF + perf/VTune).
-- CMP ejecuta hilos en paralelo, pero C++ no distingue núcleos físicos de
-  hilos SMT mediante `hardware_concurrency()`.
+- CMP ejecuta paralelismo multinúcleo directo con `T = L`
+  (`hardware_concurrency()`). Ver [cmp.md](cmp.md). C++ reporta lógicos, no
+  físicos; interpretar junto al estado BIOS SMT ON/OFF.
 
 ## Variables importantes
 
@@ -125,7 +126,7 @@ flowchart TB
 | Dummy fine | `FineGrainedScheme` (`--scheme fine`), flock completo o `--partial N` |
 | Dummy coarse | `CoarseGrainedScheme`, validado contra todo el baseline |
 | SMT (sobre-suscripción) | `SmtScheme` (`--oversubscribe F`), validado vs baseline; [smt.md](smt.md) |
-| Dummy CMP | `CmpScheme`, validado contra todo el baseline |
+| CMP (multinúcleo T≈L) | `CmpScheme` (`--scheme cmp`), validado vs baseline; [cmp.md](cmp.md) |
 | Mediciones | Tabla de `boids --scheme compare` |
 | Modalidad no gráfica | `boids --no-gui` y frames PPM |
 | Modalidad gráfica | `boids --gui` (mismo ejecutable) |

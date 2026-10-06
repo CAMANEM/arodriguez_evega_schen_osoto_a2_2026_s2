@@ -83,7 +83,7 @@ public:
     unsigned int get_oversubscribe_factor() const { return oversubscribeFactor_; }
 
     /**
-     * @return Procesadores lógicos `L` reportados para SMT, o 0 si no aplica.
+     * @return Procesadores lógicos `L` reportados (SMT/CMP), o 0 si no aplica.
      */
     unsigned int get_logical_processors() const { return logicalProcessors_; }
 

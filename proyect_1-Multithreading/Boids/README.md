@@ -87,6 +87,11 @@ Ejemplos:
 ./build/boids/boids --scheme fine --gui -n 80 --perception 60 --separation 25
 ./build/boids/boids --scheme fine --no-gui --bodies 120 --seed 7 --steps 50
 
+# CMP (T = L automático; barrer N/steps, no --workers)
+./build/boids/boids --scheme cmp --validate --boids 120 --steps 1
+./build/boids/boids --scheme cmp --no-gui --boids 200 --steps 50
+./build/boids/boids --scheme cmp --gui --boids 300
+
 # Ayuda
 ./build/boids/boids --help
 ```
@@ -110,7 +115,7 @@ ffmpeg -framerate 15 -i frames/frame_%03d.ppm -pix_fmt yuv420p flock.mp4
 | Dummy coarse-grained | `CoarseGrainedScheme` (`--scheme coarse --workers N`) |
 | Stalls coarse | `--stall-every`, `--stall-probability`, `--stall-ms`, `--stall-ms-min/max` |
 | Aproximación SMT | `SmtScheme` (`--scheme smt --oversubscribe F`, default 2); ver [`../docs/demo2/smt.md`](../docs/demo2/smt.md) |
-| Aproximación CMP | `CmpScheme` (`--scheme cmp`) |
+| CMP (multinúcleo) | `CmpScheme` (`--scheme cmp`, `T = L`); ver [`../docs/demo2/cmp.md`](../docs/demo2/cmp.md) |
 | Mediciones | `BoidsMetrics`, `metrics_interface` y `Timer` |
 | Modalidad no gráfica | `boids --no-gui` (default) |
 | Modalidad gráfica | `boids --gui` + `RaylibRenderer` |
@@ -143,8 +148,10 @@ Los diagramas y la explicación completa están en
 - SMT sobresuscribe procesadores lógicos (`T = L × F`). Es una aproximación de
   software, no Hyper-Threading: el contraste real es BIOS ON/OFF + perfilado.
   Detalle: [`../docs/demo2/smt.md`](../docs/demo2/smt.md).
-- CMP usa `std::thread::hardware_concurrency()`. La API informa procesadores
-  lógicos disponibles; no garantiza que sean núcleos físicos.
+- CMP usa `T = hardware_concurrency()` (un hilo por procesador lógico). Es
+  paralelismo directo multinúcleo; no sobresuscribe ni fija T a mano. La API
+  reporta lógicos, no físicos — interpretar con BIOS SMT ON/OFF.
+  Detalle: [`../docs/demo2/cmp.md`](../docs/demo2/cmp.md).
 - `Boid` implementa `object_interface` y `BoidsMetrics` deriva de
   `metrics_interface`, por lo que Boids respeta los contratos compartidos.
 

@@ -134,7 +134,7 @@ void printCliHelp(const char* argv0) {
         << "      fine        Grano fino simulado (round-robin por vecino)\n"
         << "      coarse      Grano grueso (hilos reales + stalls opcionales)\n"
         << "      smt         SMT por sobre-suscripcion (T = L x F)\n"
-        << "      cmp         CMP (hilos ~ procesadores logicos)\n"
+        << "      cmp         CMP directo (T = L = hardware_concurrency)\n"
         << "      compare     Demo 2: un paso de cada esquema + validacion\n"
         << "\n"
         << "Interfaz:\n"
@@ -156,9 +156,10 @@ void printCliHelp(const char* argv0) {
         << "  Tambien se acepta --flag=valor (ej. --boids=80).\n"
         << "\n"
         << "Trabajadores por modelo:\n"
-        << "  --workers N          Hilos coarse (default: 4)\n"
+        << "  --workers N          Hilos coarse (default: 4); no define CMP\n"
         << "  --partial N          Limite de contextos en fine (0 = flock completo)\n"
         << "  --oversubscribe F    Factor SMT: T = L x F (default: 2, minimo 1)\n"
+        << "  cmp                  T automatico = L (sin --workers ni --oversubscribe)\n"
         << "\n"
         << "Stalls didacticos (solo --scheme coarse, tras boid completo):\n"
         << "  --stall-every K      Stall cada K boids completados (0 = off)\n"
@@ -190,7 +191,10 @@ void printCliHelp(const char* argv0) {
         << "  " << argv0 << " --scheme coarse --stall-probability 0.1 --stall-ms-min 1 --stall-ms-max 5\n"
         << "  " << argv0 << " --scheme smt --oversubscribe 2 --validate --boids 120\n"
         << "  " << argv0 << " --scheme smt --oversubscribe 4 --no-gui --steps 50 --boids 200\n"
-        << "  " << argv0 << " --scheme smt --gui --oversubscribe 2\n";
+        << "  " << argv0 << " --scheme smt --gui --oversubscribe 2\n"
+        << "  " << argv0 << " --scheme cmp --validate --boids 120 --steps 1\n"
+        << "  " << argv0 << " --scheme cmp --no-gui --boids 200 --steps 50\n"
+        << "  " << argv0 << " --scheme cmp --gui --boids 300\n";
 }
 
 CliOptions parseCli(int argc, char** argv) {

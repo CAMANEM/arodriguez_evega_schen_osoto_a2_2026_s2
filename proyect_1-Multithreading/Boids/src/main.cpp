@@ -54,6 +54,10 @@ void printMetricsRow(const BoidsMetrics& metrics) {
                   << " F=" << metrics.get_oversubscribe_factor()
                   << " T=" << metrics.get_n_workers();
     }
+    if (metrics.get_model() == execution_model::cmp) {
+        std::cout << "  L=" << metrics.get_logical_processors()
+                  << " T=" << metrics.get_n_workers();
+    }
     std::cout << "\n";
 }
 
@@ -110,6 +114,10 @@ void printConfigBanner(const CliOptions& options, const FlockingConfig& config) 
     }
     if (options.scheme == RunScheme::Smt) {
         std::cout << " oversubscribe=" << options.smtOversubscribe;
+    }
+    if (options.scheme == RunScheme::Cmp) {
+        std::cout << " logicalProcessors=" << CmpScheme::logicalProcessorCount()
+                  << " (T=L automatico)";
     }
     if (options.gui) {
         std::cout << " (loop hasta cerrar ventana)";
