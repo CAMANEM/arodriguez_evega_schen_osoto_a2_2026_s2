@@ -132,7 +132,7 @@ void printCliHelp(const char* argv0) {
         << "  --scheme sequential|fine|coarse|smt|cmp|compare\n"
         << "      sequential  Sistema base sin hilos\n"
         << "      fine        Grano fino simulado (round-robin por vecino)\n"
-        << "      coarse      Dummy grano grueso\n"
+        << "      coarse      Grano grueso (hilos reales + stalls opcionales)\n"
         << "      smt         Dummy SMT (sobresuscripcion)\n"
         << "      cmp         Dummy CMP (hilos ~ nucleos logicos)\n"
         << "      compare     Demo 2: un paso de cada esquema + validacion\n"
@@ -152,13 +152,23 @@ void printCliHelp(const char* argv0) {
         << "  --max-speed S --max-force F\n"
         << "  --sep-weight W --align-weight W --cohesion-weight W\n"
         << "  --dt T               Paso de integracion\n"
-        << "  --seed N             Semilla del enjambre inicial\n"
+        << "  --seed N             Semilla del enjambre / stalls aleatorios\n"
         << "  Tambien se acepta --flag=valor (ej. --boids=80).\n"
         << "\n"
         << "Trabajadores por modelo:\n"
         << "  --workers N          Hilos coarse (default: 4)\n"
         << "  --partial N          Limite de contextos en fine (0 = flock completo)\n"
         << "  --oversubscribe N    Factor SMT (default: 2)\n"
+        << "\n"
+        << "Stalls didacticos (solo --scheme coarse, tras boid completo):\n"
+        << "  --stall-every K      Stall cada K boids completados (0 = off)\n"
+        << "  --stall-probability P  Probabilidad [0,1] tras cada boid (0 = off)\n"
+        << "  --stall-ms X         Duracion fija del stall en ms (default: 1)\n"
+        << "  --stall-ms-min A --stall-ms-max B\n"
+        << "                       Duracion uniforme en [A,B] ms (ambos o ninguno)\n"
+        << "  --log-checkpoints    Imprime el checkpoint manual en cada stall\n"
+        << "  Precedencia de disparo: (cada K) OR (sorteo P). Si K=0 y P=0, sin stalls.\n"
+        << "  Precedencia de duracion: rango min/max si ambos >= 0; si no, --stall-ms.\n"
         << "\n"
         << "Salida / evidencia:\n"
         << "  --export-frames DIR  Exporta PPM cada --frame-interval pasos\n"
@@ -175,7 +185,9 @@ void printCliHelp(const char* argv0) {
         << "  " << argv0 << " --scheme compare --export-frames frames --steps 350\n"
         << "  " << argv0 << " --scheme fine --validate --boids=40\n"
         << "  " << argv0 << " --scheme fine --partial 20 --steps 1\n"
-        << "  " << argv0 << " --scheme coarse --workers 8 --steps 1000 --boids 200\n";
+        << "  " << argv0 << " --scheme coarse --workers 8 --steps 1000 --boids 200\n"
+        << "  " << argv0 << " --scheme coarse --workers 4 --stall-every 10 --stall-ms 2 --validate\n"
+        << "  " << argv0 << " --scheme coarse --stall-probability 0.1 --stall-ms-min 1 --stall-ms-max 5\n";
 }
 
 CliOptions parseCli(int argc, char** argv) {
@@ -231,6 +243,30 @@ CliOptions parseCli(int argc, char** argv) {
         }
         if (takeFlagValue(argc, argv, i, arg, {"--oversubscribe"}, value)) {
             options.smtOversubscribe = parseUInt(value, "--oversubscribe");
+            continue;
+        }
+        if (takeFlagValue(argc, argv, i, arg, {"--stall-every"}, value)) {
+            options.stallEvery = parseInt(value, "--stall-every");
+            continue;
+        }
+        if (takeFlagValue(argc, argv, i, arg, {"--stall-probability"}, value)) {
+            options.stallProbability = parseDouble(value, "--stall-probability");
+            continue;
+        }
+        if (takeFlagValue(argc, argv, i, arg, {"--stall-ms"}, value)) {
+            options.stallMs = parseDouble(value, "--stall-ms");
+            continue;
+        }
+        if (takeFlagValue(argc, argv, i, arg, {"--stall-ms-min"}, value)) {
+            options.stallMsMin = parseDouble(value, "--stall-ms-min");
+            continue;
+        }
+        if (takeFlagValue(argc, argv, i, arg, {"--stall-ms-max"}, value)) {
+            options.stallMsMax = parseDouble(value, "--stall-ms-max");
+            continue;
+        }
+        if (arg == "--log-checkpoints") {
+            options.logCoarseCheckpoints = true;
             continue;
         }
         if (takeFlagValue(argc, argv, i, arg, {"--boids", "--bodies", "--n", "-n"}, value)) {
@@ -334,6 +370,42 @@ CliOptions parseCli(int argc, char** argv) {
     }
     if (options.frameInterval <= 0) {
         throw std::runtime_error("--frame-interval debe ser > 0");
+    }
+    if (options.workers < 1) {
+        throw std::runtime_error("--workers debe ser >= 1");
+    }
+
+    // Validación/clamp de stalls (también usada por CoarseGrainedScheme).
+    {
+        int stallEvery = options.stallEvery;
+        double stallProbability = options.stallProbability;
+        double stallMs = options.stallMs;
+        double stallMsMin = options.stallMsMin;
+        double stallMsMax = options.stallMsMax;
+        // Incluye StallPolicy.hpp solo vía validación local para no acoplar el
+        // parseo a la lógica de hilos: replicamos las reglas documentadas.
+        if (stallEvery < 0) {
+            stallEvery = 0;
+        }
+        if (stallProbability < 0.0 || stallProbability > 1.0) {
+            throw std::runtime_error("--stall-probability debe estar en [0,1]");
+        }
+        if (stallMs < 0.0) {
+            throw std::runtime_error("--stall-ms debe ser >= 0");
+        }
+        const bool minSet = stallMsMin >= 0.0;
+        const bool maxSet = stallMsMax >= 0.0;
+        if (minSet != maxSet) {
+            throw std::runtime_error(
+                "Debe indicar ambos --stall-ms-min y --stall-ms-max, o ninguno");
+        }
+        if (minSet && maxSet && stallMsMin > stallMsMax) {
+            throw std::runtime_error(
+                "--stall-ms-min no puede ser mayor que --stall-ms-max");
+        }
+        options.stallEvery = stallEvery;
+        options.stallProbability = stallProbability;
+        options.stallMs = stallMs;
     }
 
     return options;

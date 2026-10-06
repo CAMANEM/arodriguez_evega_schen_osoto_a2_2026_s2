@@ -15,6 +15,7 @@ set(BOIDS_CORE_SOURCES
     src/core/Boid.cpp
     src/core/CmpScheme.cpp
     src/core/CoarseGrainedScheme.cpp
+    src/core/CoarseWorkerCheckpoint.cpp
     src/core/FineGrainedScheme.cpp
     src/core/Flock.cpp
     src/core/FlockingConfig.cpp
@@ -22,6 +23,7 @@ set(BOIDS_CORE_SOURCES
     src/core/FrameWriter.cpp
     src/core/SequentialScheme.cpp
     src/core/SmtScheme.cpp
+    src/core/StallPolicy.cpp
     src/core/SteeringContext.cpp
     src/core/ThreadedScheme.cpp
     src/core/Timer.cpp

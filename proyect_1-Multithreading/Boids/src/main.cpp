@@ -4,6 +4,7 @@
  */
 
 #include <algorithm>
+#include <cstdint>
 #include <cstdlib>
 #include <filesystem>
 #include <iomanip>
@@ -42,7 +43,13 @@ void printMetricsRow(const BoidsMetrics& metrics) {
               << std::setw(16) << workerCount
               << std::setw(15) << std::fixed << std::setprecision(3)
               << metrics.elapsed_milliseconds()
-              << std::setw(16) << boidsCell << "\n";
+              << std::setw(16) << boidsCell;
+    if (metrics.get_stall_count() > 0 || metrics.get_model() == execution_model::coarse_grained) {
+        std::cout << "  stalls=" << metrics.get_stall_count()
+                  << " stallMs=" << std::setprecision(3) << metrics.get_stall_time_ms()
+                  << " computeMs=" << metrics.get_compute_time_ms();
+    }
+    std::cout << "\n";
 }
 
 bool flocksMatchApprox(const Flock& a, const Flock& b, int count = -1,
@@ -87,7 +94,14 @@ void printConfigBanner(const CliOptions& options, const FlockingConfig& config) 
         }
     }
     if (options.scheme == RunScheme::Coarse) {
-        std::cout << " workers=" << options.workers;
+        std::cout << " workers=" << options.workers
+                  << " stallEvery=" << options.stallEvery
+                  << " stallP=" << options.stallProbability
+                  << " stallMs=" << options.stallMs;
+        if (options.stallMsMin >= 0.0 && options.stallMsMax >= 0.0) {
+            std::cout << " stallRange=[" << options.stallMsMin << ","
+                      << options.stallMsMax << "]";
+        }
     }
     if (options.scheme == RunScheme::Smt) {
         std::cout << " oversubscribe=" << options.smtOversubscribe;
@@ -133,7 +147,16 @@ int runCompare(const CliOptions& options) {
 
     {
         Flock flock = initialFlock;
-        CoarseGrainedScheme scheme(static_cast<unsigned int>(std::max(1, options.workers)));
+        CoarseGrainedScheme::Options coarseOptions;
+        coarseOptions.threadCount =
+            static_cast<unsigned int>(std::max(1, options.workers));
+        coarseOptions.stallEveryBoids = options.stallEvery;
+        coarseOptions.stallProbability = options.stallProbability;
+        coarseOptions.stallMilliseconds = options.stallMs;
+        coarseOptions.stallMillisecondsMin = options.stallMsMin;
+        coarseOptions.stallMillisecondsMax = options.stallMsMax;
+        coarseOptions.seed = static_cast<std::uint32_t>(options.seed);
+        CoarseGrainedScheme scheme(coarseOptions);
         printMetricsRow(scheme.simulateStep(flock, config));
         std::cout << "  -> Validacion (coincide con baseline secuencial): "
                   << (flocksMatchApprox(flock, referenceFlock) ? "SI" : "NO") << "\n";

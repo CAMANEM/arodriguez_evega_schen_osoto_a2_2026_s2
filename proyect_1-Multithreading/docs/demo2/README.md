@@ -94,7 +94,10 @@ flowchart TB
   crea `std::thread`. Cada boid es un contexto virtual; el quantum es un
   vecino candidato; el scheduler es round-robin aunque el contexto actual no
   haya terminado. Sirve para contrastar el modelo y medir overhead, no speedup.
-- Coarse-grained crea hilos tradicionales y espera en `join()`.
+- Coarse-grained crea hilos tradicionales y espera en `join()`. Puede inyectar
+  stalls didácticos solo tras terminar un boid completo, con
+  checkpoint manual explícito frente al save implícito del SO. Ver
+  [coarse-grained.md](coarse-grained.md).
 - SMT aproxima contención mediante sobresuscripción.
 - CMP ejecuta hilos en paralelo, pero C++ no distingue núcleos físicos de
   hilos SMT mediante `hardware_concurrency()`.

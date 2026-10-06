@@ -108,6 +108,7 @@ ffmpeg -framerate 15 -i frames/frame_%03d.ppm -pix_fmt yuv420p flock.mp4
 | Variables críticas | `FlockingConfig` + flags CLI (`--boids`, radios, pesos) |
 | Fine-grained simulado | `FineGrainedScheme` (`--scheme fine`, `--partial N` opcional) |
 | Dummy coarse-grained | `CoarseGrainedScheme` (`--scheme coarse --workers N`) |
+| Stalls coarse | `--stall-every`, `--stall-probability`, `--stall-ms`, `--stall-ms-min/max` |
 | Aproximación SMT | `SmtScheme` (`--scheme smt --oversubscribe N`) |
 | Aproximación CMP | `CmpScheme` (`--scheme cmp`) |
 | Mediciones | `BoidsMetrics`, `metrics_interface` y `Timer` |
@@ -136,6 +137,9 @@ Los diagramas y la explicación completa están en
 - Fine-grained simula por software un cambio round-robin en cada vecino
   candidato. Sus trabajadores son contextos virtuales, no hilos del SO.
 - Coarse-grained usa `std::thread` y `join()` como sincronización costosa.
+  Opcionalmente inyecta stalls didácticos solo tras boid completo
+  con un checkpoint manual que **evidencia** el save/resume; el SO ya conserva
+  el contexto del hilo de forma implícita. Detalle: [`../docs/demo2/coarse-grained.md`](../docs/demo2/coarse-grained.md).
 - SMT sobresuscribe procesadores lógicos. Esto es una aproximación de software,
   no sustituye la comparación física con SMT habilitado y deshabilitado.
 - CMP usa `std::thread::hardware_concurrency()`. La API informa procesadores

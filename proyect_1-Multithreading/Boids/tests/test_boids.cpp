@@ -267,7 +267,7 @@ bool testCliProblemParameters() {
 }
 
 /**
- * @brief Verifica que coarse-grained produzca el baseline completo.
+ * @brief Verifica que coarse-grained produzca el baseline completo (sin stalls).
  */
 bool testCoarseGrainedEquivalence() {
     const FlockingConfig config(12, 200.0, 200.0, 50.0, 20.0,
@@ -284,7 +284,133 @@ bool testCoarseGrainedEquivalence() {
     return metrics.get_model() == execution_model::coarse_grained &&
            metrics.get_n_workers() == 2 &&
            !metrics.uses_virtual_workers() &&
+           metrics.get_stall_count() == 0 &&
            flocksMatch(sequentialFlock, coarseFlock, config.getBoidCount());
+}
+
+/**
+ * @brief Stalls inyectados no cambian el resultado numérico vs secuencial.
+ */
+bool testCoarseGrainedEquivalenceWithStalls() {
+    const FlockingConfig config = makeTestConfig(16);
+    const Flock initial(config, 41);
+
+    Flock sequentialFlock = initial;
+    SequentialScheme sequential;
+    sequential.simulateStep(sequentialFlock, config);
+
+    CoarseGrainedScheme::Options options;
+    options.threadCount = 4;
+    options.stallEveryBoids = 3;
+    options.stallMilliseconds = 1.0;
+    options.seed = 41;
+
+    Flock coarseFlock = initial;
+    CoarseGrainedScheme coarse(options);
+    const BoidsMetrics metrics = coarse.simulateStep(coarseFlock, config);
+
+    return metrics.get_stall_count() > 0 &&
+           metrics.get_stall_time_ms() > 0.0 &&
+           flocksMatch(sequentialFlock, coarseFlock, config.getBoidCount());
+}
+
+/**
+ * @brief Stall aleatorio con semilla fija sigue siendo equivalente al secuencial.
+ */
+bool testCoarseGrainedRandomStallEquivalence() {
+    const FlockingConfig config = makeTestConfig(10);
+    const Flock initial(config, 7);
+
+    Flock sequentialFlock = initial;
+    SequentialScheme sequential;
+    sequential.simulateStep(sequentialFlock, config);
+
+    CoarseGrainedScheme::Options options;
+    options.threadCount = 2;
+    options.stallProbability = 0.5;
+    options.stallMillisecondsMin = 0.5;
+    options.stallMillisecondsMax = 1.5;
+    options.seed = 99;
+
+    Flock coarseFlock = initial;
+    CoarseGrainedScheme coarse(options);
+    const BoidsMetrics metrics = coarse.simulateStep(coarseFlock, config);
+
+    return flocksMatch(sequentialFlock, coarseFlock, config.getBoidCount()) &&
+           metrics.get_model() == execution_model::coarse_grained;
+}
+
+/**
+ * @brief Bordes: 1 worker, más workers que boids, stalls desactivados.
+ */
+bool testCoarseGrainedEdgeCases() {
+    const FlockingConfig config = makeTestConfig(5);
+    const Flock initial(config, 13);
+
+    Flock sequentialFlock = initial;
+    SequentialScheme sequential;
+    sequential.simulateStep(sequentialFlock, config);
+
+    // 1 worker
+    {
+        Flock flock = initial;
+        CoarseGrainedScheme coarse(1);
+        const BoidsMetrics metrics = coarse.simulateStep(flock, config);
+        if (metrics.get_n_workers() != 1 ||
+            !flocksMatch(sequentialFlock, flock, config.getBoidCount())) {
+            return false;
+        }
+    }
+
+    // Más workers que boids
+    {
+        Flock flock = initial;
+        CoarseGrainedScheme coarse(32);
+        const BoidsMetrics metrics = coarse.simulateStep(flock, config);
+        if (metrics.get_n_workers() != config.getBoidCount() ||
+            !flocksMatch(sequentialFlock, flock, config.getBoidCount())) {
+            return false;
+        }
+    }
+
+    // Un solo boid
+    {
+        const FlockingConfig oneConfig = makeTestConfig(1);
+        Flock sequentialOne(oneConfig, 4);
+        Flock coarseOne = sequentialOne;
+        sequential.simulateStep(sequentialOne, oneConfig);
+        CoarseGrainedScheme::Options options;
+        options.threadCount = 4;
+        options.stallEveryBoids = 1;
+        options.stallMilliseconds = 1.0;
+        CoarseGrainedScheme coarse(options);
+        const BoidsMetrics metrics = coarse.simulateStep(coarseOne, oneConfig);
+        if (!flocksMatch(sequentialOne, coarseOne, 1) || metrics.get_stall_count() != 1) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+/**
+ * @brief CLI parsea parámetros de stall de coarse.
+ */
+bool testCliCoarseStallParameters() {
+    const CliOptions options = parseArgs(
+        {"--scheme", "coarse", "--workers", "6", "--stall-every", "5",
+         "--stall-probability", "0.25", "--stall-ms", "2.5", "--seed", "11",
+         "--log-checkpoints"});
+    if (options.scheme != RunScheme::Coarse || options.workers != 6 ||
+        options.stallEvery != 5 || !nearlyEqual(options.stallProbability, 0.25) ||
+        !nearlyEqual(options.stallMs, 2.5) || options.seed != 11 ||
+        !options.logCoarseCheckpoints) {
+        return false;
+    }
+
+    const CliOptions ranged = parseArgs(
+        {"--scheme=coarse", "--stall-ms-min=1", "--stall-ms-max=3"});
+    return nearlyEqual(ranged.stallMsMin, 1.0) && nearlyEqual(ranged.stallMsMax, 3.0);
 }
 
 } // namespace
@@ -310,6 +436,10 @@ int main() {
     check(testFineGrainedEdgeCases(), "bordes fine-grained");
     check(testCliProblemParameters(), "CLI parametros del problema");
     check(testCoarseGrainedEquivalence(), "equivalencia coarse-grained");
+    check(testCoarseGrainedEquivalenceWithStalls(), "equivalencia coarse con stalls");
+    check(testCoarseGrainedRandomStallEquivalence(), "equivalencia coarse stall aleatorio");
+    check(testCoarseGrainedEdgeCases(), "bordes coarse-grained");
+    check(testCliCoarseStallParameters(), "CLI parametros stall coarse");
 
     if (failures == 0) {
         std::cout << "Todas las pruebas de Boids pasaron.\n";

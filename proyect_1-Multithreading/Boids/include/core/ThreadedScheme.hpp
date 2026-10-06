@@ -25,7 +25,13 @@
  */
 class ThreadedScheme : public FlockingScheme {
 public:
-    BoidsMetrics simulateStep(Flock& flock, const FlockingConfig& config) final;
+    /**
+     * @brief Paso común de hilos reales (partición + join + integración).
+     *
+     * CoarseGrainedScheme puede sobreescribirlo para inyectar stalls
+     * didácticos y checkpoints sin alterar SMT/CMP.
+     */
+    BoidsMetrics simulateStep(Flock& flock, const FlockingConfig& config) override;
 
 protected:
     /**
@@ -40,7 +46,6 @@ protected:
      */
     virtual unsigned int computeThreadCount(const Flock& flock) const = 0;
 
-private:
     /**
      * @brief Calcula las fuerzas de dirección del rango de boids
      *        [startIndex, endIndex) y las escribe en su porción disjunta

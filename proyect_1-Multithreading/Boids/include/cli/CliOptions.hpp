@@ -41,6 +41,14 @@ struct CliOptions {
     int frameInterval = 5;
     std::string exportFramesDir;
 
+    // Parámetros de stall didáctico para Coarse-Grained.
+    int stallEvery = 0;                 // Stall cada K boids (0 = off). 
+    double stallProbability = 0.0;      // Probabilidad [0,1] tras cada boid. 
+    double stallMs = 1.0;               // Duración fija (ms). 
+    double stallMsMin = -1.0;           // Mínimo aleatorio (-1 = usar fija). 
+    double stallMsMax = -1.0;           // Máximo aleatorio (-1 = usar fija). 
+    bool logCoarseCheckpoints = false;  // Traza de checkpoints en demo. 
+
     int boidCount = 70;
     double worldWidth = 450.0;
     double worldHeight = 450.0;
