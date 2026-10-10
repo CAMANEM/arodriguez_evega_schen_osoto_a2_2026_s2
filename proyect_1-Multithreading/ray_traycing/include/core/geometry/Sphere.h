@@ -5,8 +5,9 @@
 #ifndef SPHERE_H
 #define SPHERE_H
 
-#include "Vector3.h"
-#include "Ray.h"
+#include "core/geometry/Vector3.h"
+#include "core/geometry/Ray.h"
+#include <cmath>
 
 /**
  * @brief Esfera renderizable con centro, radio y color RGB normalizado.

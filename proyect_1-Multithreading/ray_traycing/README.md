@@ -5,8 +5,8 @@ imagen de 80 x 60 píxeles. El renderer, el benchmark y el exportador de imágen
 están dentro de esta carpeta; el benchmark reutiliza la interfaz de métricas
 compartida en `../shared`.
 
-`include/core/raytracing_config.hpp` centraliza la geometría y los colores de la
-escena, la cámara, la resolución y los parámetros de ejecución. El benchmark usa
+`include/core/config/raytracing_config.hpp` centraliza la geometría y los colores
+de la escena, la cámara, la resolución y los parámetros de ejecución. El benchmark usa
 `Timer` para medir cada frame en milisegundos y convierte las muestras a segundos
 antes de entregarlas a la interfaz común de métricas.
 
@@ -49,6 +49,25 @@ quedan dentro de la carpeta de configuración, por ejemplo `build/Release/`.
 Si cambias de compilador o generador, configura en otro directorio de build
 para evitar reutilizar una configuración anterior.
 
+### Limpiar y recompilar (Windows / MSYS2)
+
+Ejecuta estos comandos desde `ray_traycing/`. Para limpiar solo los artefactos
+de compilación y conservar la configuración de CMake:
+
+```powershell
+cmake --build --preset msys2-mingw64 --target clean
+cmake --build --preset msys2-mingw64 --parallel
+```
+
+Para borrar por completo el directorio generado y configurar una compilación
+nueva, elimina solo `build-msys2/`; los datos de `data/` no se borran:
+
+```powershell
+Remove-Item -Recurse -Force build-msys2 -ErrorAction SilentlyContinue
+cmake --preset msys2-mingw64
+cmake --build --preset msys2-mingw64 --parallel
+```
+
 ## Esquemas de ejecución
 
 | Nombre | Comportamiento |
@@ -68,17 +87,11 @@ incluyen diferencias de scheduler y creación/sincronización de threads.
 
 ## Benchmark
 
-Desde PowerShell, ejecuta los cinco esquemas con ray tracing, cinco repeticiones
-por esquema:
+Desde PowerShell, ejecuta los cinco esquemas con ray tracing, 200 repeticiones
+por esquema (el mínimo de referencia de la evaluación):
 
 ```powershell
-./build-msys2/raytracing_benchmark.exe --model all --workload raytracing --runs 5 --output data/benchmark_raytracing.csv
-```
-
-Ejecuta la carga dummy con los mismos esquemas:
-
-```powershell
-./build-msys2/raytracing_benchmark.exe --model all --workload dummy --runs 5 --output data/benchmark_dummy.csv
+./build-msys2/raytracing_benchmark.exe --model all --runs 200 --output data/benchmark_raytracing.csv
 ```
 
 Opciones:
@@ -86,36 +99,52 @@ Opciones:
 | Opción | Valores / valor predeterminado | Descripción |
 | --- | --- | --- |
 | `--model` | `all` (predeterminado), `sequential`, `fgmt`, `cgmt`, `smt`, `cmp` | Ejecuta todos los modelos o uno. |
-| `--workload` | `raytracing` (predeterminado), `dummy` | Selecciona el cálculo de cada píxel. |
-| `--runs` | `5` | Número de repeticiones; debe ser positivo. |
+| `--runs` | `200` | Número de repeticiones por modelo; debe ser positivo. |
 | `--output` | `data/benchmark.csv` | Ruta del CSV. Se crean los directorios necesarios. |
 | `--no-gif` | | Omite la generación predeterminada del GIF. |
 | `--help`, `-h` | | Muestra el uso del programa. |
 
-Cuando se elige un solo modelo paralelo, el benchmark también ejecuta el modelo
-secuencial para obtener el baseline, aunque el CSV solo incluya el modelo
-solicitado. Speedup y eficiencia se calculan usando los promedios de tiempo de
-pared del mismo workload; eficiencia divide el speedup entre `n_workers`.
-Cada muestra mide solo `render_frame()`, no la escritura del CSV.
+El argumento `--output` nombra el CSV resumen. Además, se crea un CSV por
+modelo con una fila por frame medido; por ejemplo, para
+`data/benchmark_raytracing.csv` se generan
+`data/benchmark_raytracing_sequential_frames.csv`,
+`data/benchmark_raytracing_fgmt_frames.csv`,
+`data/benchmark_raytracing_cgmt_frames.csv`,
+`data/benchmark_raytracing_smt_frames.csv` y
+`data/benchmark_raytracing_cmp_frames.csv`. Si se solicita un solo modelo
+paralelo, también se genera el CSV secuencial usado como baseline.
 
-El CSV contiene `model`, `workload`, `n_workers`, `runs`, promedio y desviación
-estándar del tiempo en segundos, límites del intervalo de confianza del 95 %,
-speedup y eficiencia. Con una sola repetición, la desviación estándar es cero.
-Estos son tiempos de pared: no son los relojes virtuales internos de los
-schedulers.
+Cada CSV por modelo contiene el tiempo de pared del frame, el tiempo virtual,
+latencia virtual atribuida a stalls, cantidad de misses/stalls y cambios de
+contexto simulados. Secuencial y CMP pagan la latencia completa de miss
+(3200 ns por miss); FGMT cuenta un quantum desperdiciado (1000 ns por miss);
+CGMT registra el costo de cambio de contexto (400 ns por miss; la latencia del
+miss se considera oculta); SMT registra la latencia modelada (3200 ns por miss).
+Los cambios de contexto son transferencias entre contextos distintas dentro
+del scheduler simulado: FGMT al rotar a otro worker, CGMT al ceder/terminar un
+tile y SMT cuando un miss expulsa un contexto. Secuencial y CMP reportan cero,
+porque no se instrumentan cambios del scheduler del sistema operativo.
+
+El CSV resumen se calcula a partir de las muestras de los CSV por modelo.
+Incluye media, desviación estándar muestral e intervalo de confianza normal
+aproximado del 95 % para el tiempo de ejecución y el tiempo virtual de stall,
+además de medias/desviaciones para cantidad de stalls y cambios de contexto.
+El speedup usa la razón entre el promedio secuencial y el promedio del modelo;
+su intervalo del 95 % usa propagación de error para dos medias independientes.
+La eficiencia es `speedup / n_workers`. `virtual_speedup` compara los tiempos
+virtuales medios. El tiempo de pared mide solo `render_frame()`, no escritura
+de CSV ni generación del GIF.
+
+Al elegir un único modelo paralelo, también se ejecuta la campaña secuencial
+completa para construir el baseline, aunque solo se incluya el modelo elegido
+en el CSV resumen.
 
 Al terminar, el benchmark crea `data/camera_orbit.gif`: 72 frames de la
 cámara orbitando en sentido horario sobre un círculo de radio 8 en el plano XZ,
 alrededor del centro de la escena. Los
 frames PPM intermedios quedan en `data/camera_orbit_frames/`; la animación se
 genera después de las mediciones y no afecta sus tiempos. Usa `--no-gif` para
-omitir este paso. El GIF siempre usa la carga `raytracing` y el modelo CMP,
-independientemente de la carga o modelos seleccionados para el benchmark.
-
-La carga `dummy` omite la intersección de rayos y genera un patrón de color
-determinista. Conserva el recorrido de píxeles y la lógica de scheduler/cache
-de cada esquema, para poder probarlos sin el cálculo geométrico. No representa
-una carga ray tracing equivalente en trabajo de CPU.
+omitir este paso. El GIF usa el modelo CMP.
 
 Los nombres de salida son relativos al directorio de trabajo desde el que se
 ejecuta el programa.
@@ -123,16 +152,15 @@ ejecuta el programa.
 Para repetir la verificación secuencial y guardar sus resultados en `data/`:
 
 ```powershell
-./build-msys2/raytracing_benchmark.exe --model sequential --workload raytracing --runs 5 --output data/sequential_raytracing.csv
-./build-msys2/raytracing_visual.exe --model sequential --workload raytracing --output data/sequential_raytracing.ppm
+./build-msys2/raytracing_benchmark.exe --model sequential --runs 200 --output data/sequential_raytracing.csv
+./build-msys2/raytracing_visual.exe --model sequential --output data/sequential_raytracing.ppm
 ```
 
 ## Renderizar modelos
 
 `raytracing_visual` ejecuta los cinco modelos por defecto, guarda un PPM por
 modelo y genera el GIF de órbita de cámara descrito arriba. No abre una ventana;
-usa un visor compatible con PPM para ver las imágenes. Si se elige la carga
-`dummy`, los PPM usan esa carga, pero el GIF sigue renderizando ray tracing.
+usa un visor compatible con PPM para ver las imágenes.
 
 ```powershell
 ./build-msys2/raytracing_visual.exe
@@ -142,13 +170,12 @@ Cada salida recibe el nombre `data/frame_<modelo>.ppm`. Se puede ejecutar un
 solo modelo y elegir su archivo de salida:
 
 ```powershell
-./build-msys2/raytracing_visual.exe --model cmp --workload dummy --output data/frame_dummy.ppm --no-gif
+./build-msys2/raytracing_visual.exe --model cmp --output data/frame_cmp.ppm --no-gif
 ```
 
-`--model` acepta `all`, `sequential`, `fgmt`, `cgmt`, `smt` o `cmp`; `--workload`
-acepta `raytracing` o `dummy`. Con `--model all`, `--output` se usa como prefijo
-para generar un archivo por modelo. `--no-gif` omite el GIF y `--help` muestra
-el uso del programa.
+`--model` acepta `all`, `sequential`, `fgmt`, `cgmt`, `smt` o `cmp`. Con
+`--model all`, `--output` se usa como prefijo para generar un archivo por modelo.
+`--no-gif` omite el GIF y `--help` muestra el uso del programa.
 
 Todos los CSV, PPM, GIF y frames intermedios se guardan en `data/`; los artefactos
 de compilación permanecen en `build-msys2/`.

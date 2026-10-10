@@ -2,18 +2,18 @@
  * @file FinegrainedRenderer.cpp
  * @brief Scheduler FGMT con señalización por semáforos y tiles de píxeles.
  */
-#include "FinegrainedRenderer.h"
-#include "raytracing_config.hpp"
-#include "Ray.h"
-#include "RendererUtils.h"
-#include "Workload.h"
+#include "core/strategies/FinegrainedRenderer.h"
+#include "core/config/raytracing_config.hpp"
+#include "core/utils/RendererUtils.h"
+#include <cstdint>
+#include <thread>
 
 using namespace constants;
 using namespace trace;
 
 /** @brief Divide el frame en tiles y crea cachés deterministas por worker. */
 FinegrainedRenderer::FinegrainedRenderer()
-    : scene(), frame(IMAGE_HEIGHT * IMAGE_WIDTH) {
+    : frame(IMAGE_HEIGHT * IMAGE_WIDTH) {
 
     tiles.resize(NUM_THREADS);
 
@@ -33,7 +33,7 @@ FinegrainedRenderer::FinegrainedRenderer()
     // en cada ejecución (reproducibilidad). Se diferencia por thread_id para
     // evitar que todos los tiles compartan el mismo estado inicial del RNG.
     for (int i = 0; i < NUM_THREADS; ++i)
-        cache_models[i] = CacheModel(CACHE_SIZE, 42u + static_cast<uint32_t>(i));
+        cache_models[i] = CacheModel(CACHE_SIZE, 42u + static_cast<std::uint32_t>(i));
 
     thread_stats.resize(NUM_THREADS);
     for (int i = 0; i < NUM_THREADS; ++i)
@@ -83,11 +83,12 @@ void FinegrainedRenderer::render_tile_worker(int thread_id) {
             // se desperdicia. El píxel se renderizará en el próximo turno.
             stats.virtual_time_ns += PIXEL_QUANTUM_NS;
             stats.cache_misses++;
+            stats.stall_time_ns += PIXEL_QUANTUM_NS;
             pending_stall = true;
             logger_.log_stall(cycle, thread_id, x, y, PIXEL_QUANTUM_NS, "slot wasted");
         } else {
             // COMPUTE: renderizar pixel y avanzar al siguiente
-            frame[y * IMAGE_WIDTH + x] = compute_pixel(scene, x, y, camera_pos_, workload_);
+            frame[y * IMAGE_WIDTH + x] = pixel_kernel_.compute(x, y);
             stats.virtual_time_ns += PIXEL_QUANTUM_NS;
             logger_.log_compute(cycle, thread_id, x, y, PIXEL_QUANTUM_NS);
             pending_stall = false;
@@ -117,6 +118,8 @@ void FinegrainedRenderer::render_tile_worker(int thread_id) {
             ++checked;
         }
         // checked == NUM_THREADS solo si todos están done — ya salimos arriba
+        if (next != thread_id)
+            stats.context_switches++;
         slots_[next].release();
     }
 }

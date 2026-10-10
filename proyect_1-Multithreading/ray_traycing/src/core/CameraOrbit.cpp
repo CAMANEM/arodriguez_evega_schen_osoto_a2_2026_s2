@@ -2,11 +2,11 @@
  * @file CameraOrbit.cpp
  * @brief Renderiza frames alrededor de la escena y genera el GIF animado.
  */
-#include "CameraOrbit.h"
+#include "core/camera/CameraOrbit.h"
 
-#include "raytracing_config.hpp"
-#include "RendererFactory.h"
-#include "image_io.hpp"
+#include "core/config/raytracing_config.hpp"
+#include "core/strategies/RendererFactory.h"
+#include "core/utils/image_io.hpp"
 #include <cmath>
 #include <cstdlib>
 #include <filesystem>
@@ -24,7 +24,6 @@ void render_camera_orbit_gif() {
     const std::filesystem::path frames_directory = constants::CAMERA_ORBIT_FRAMES_DIR;
     std::filesystem::create_directories(frames_directory);
     std::unique_ptr<IRenderer> renderer = RendererFactory::create("cmp");
-    renderer->set_workload(Workload::raytracing);
 
     const double full_rotation = 2.0 * std::acos(-1.0);
     for (int frame_index = 0; frame_index < constants::CAMERA_ORBIT_FRAME_COUNT; ++frame_index) {

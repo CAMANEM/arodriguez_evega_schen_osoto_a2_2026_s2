@@ -7,9 +7,9 @@
 
 #include <vector>
 #include <string>
-#include "Vector3.h"
-#include "Metrics.h"
-#include "Workload.h"
+#include "core/geometry/Vector3.h"
+#include "core/utils/Metrics.h"
+#include "core/geometry/PixelKernel.h"
 
 /**
  * @brief Interfaz polimórfica para renderizar frames con cualquier esquema.
@@ -21,11 +21,6 @@ class IRenderer {
 public:
     /** @brief Destructor virtual para destruir implementaciones por interfaz. */
     virtual ~IRenderer() = default;
-
-    /** @brief Selecciona la carga que usará cada píxel. */
-    void set_workload(Workload workload) { workload_ = workload; }
-    /** @return Carga configurada actualmente. */
-    Workload get_workload() const { return workload_; }
 
     /** @brief Renderiza un frame y devuelve IMAGE_WIDTH × IMAGE_HEIGHT colores row-major. */
     virtual std::vector<Vector3> render_frame() = 0;
@@ -42,15 +37,21 @@ public:
     /** @return Misses de caché del último frame. */
     virtual int get_total_stalls() const { return 0; }
 
+    /** @return Latencia virtual atribuida a stalls del último frame, en ns. */
+    virtual long long get_stall_time_ns() const { return 0LL; }
+
+    /** @return Cambios de contexto simulados durante el último frame. */
+    virtual int get_context_switches() const { return 0; }
+
     /** @return Identificador estable del modelo. */
     virtual std::string get_model_name() const = 0;
 
     /**
      * @brief Establece la posición de cámara para el siguiente frame.
      * @param pos Posición de cámara en coordenadas del mundo.
-     * @note Implementación opcional; por defecto no modifica el renderer.
+    * @note La implementación base actualiza la cámara del kernel compartido.
      */
-    virtual void set_camera_pos(const Vector3& /*pos*/) {}
+    virtual void set_camera_pos(const Vector3& pos) { pixel_kernel_.set_camera_pos(pos); }
 
     /**
      * @brief Habilita logging del scheduler para los primeros ciclos.
@@ -60,7 +61,7 @@ public:
     virtual void set_verbose(int /*cycles*/) {}
 
 protected:
-    Workload workload_ = Workload::raytracing;
+    PixelKernel pixel_kernel_;
 };
 
 #endif // IRENDERER_H

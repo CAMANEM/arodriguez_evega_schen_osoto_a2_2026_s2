@@ -5,13 +5,10 @@
 #ifndef SMT_RENDERER_H
 #define SMT_RENDERER_H
 
-#include "IRenderer.h"
-#include "Scene.h"
-#include "CacheModel.h"
-#include "Metrics.h"
-#include "Ray.h"
-#include "raytracing_config.hpp"
-#include "SchedulerLogger.h"
+#include "core/strategies/IRenderer.h"
+#include "core/utils/CacheModel.h"
+#include "core/utils/Metrics.h"
+#include "core/utils/SchedulerLogger.h"
 #include <vector>
 
 // SMTRenderer: Renderizador SMT (Simultaneous Multithreading) — modelo por píxel.
@@ -56,11 +53,6 @@ public:
     /** @param cycles Cantidad de ciclos iniciales que se registran. */
     void set_verbose(int cycles) override { logger_.set_max_cycles(cycles); }
 
-    // Actualiza la posición de cámara antes de render_frame().
-    // GenericRunner la llama una vez por frame; el scheduler SMT no cambia.
-    /** @param pos Posición de cámara para el siguiente frame. */
-    void set_camera_pos(const Vector3& pos) override { camera_pos_ = pos; }
-
     /** @return Frame completo producido por la simulación SMT. */
     std::vector<Vector3> render_frame() override;
 
@@ -81,13 +73,23 @@ public:
         for (const auto& ts : thread_stats_) total += ts.cache_misses;
         return total;
     }
+    /** @return Latencia de memoria modelada para todos los misses, en ns. */
+    long long get_stall_time_ns() const override {
+        long long total = 0LL;
+        for (const auto& ts : thread_stats_) total += ts.stall_time_ns;
+        return total;
+    }
+    /** @return Evicciones de contextos por stalls en el último frame. */
+    int get_context_switches() const override {
+        int total = 0;
+        for (const auto& ts : thread_stats_) total += ts.context_switches;
+        return total;
+    }
 
 private:
     // Rango de píxeles asignado a cada contexto virtual.
     struct Task { int start, end; };
 
-    Scene   scene_;
-    Vector3 camera_pos_;   // Posición de cámara para el frame actual (órbita elíptica)
     std::vector<Vector3>              frame_;
     std::vector<CacheModel>           cache_models_;
     std::vector<trace::ThreadMetrics> thread_stats_;

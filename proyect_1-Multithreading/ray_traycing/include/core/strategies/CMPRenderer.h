@@ -5,15 +5,11 @@
 #ifndef CMP_RENDERER_H
 #define CMP_RENDERER_H
 
-#include "IRenderer.h"
-#include "Scene.h"
-#include "CacheModel.h"
-#include "Metrics.h"
-#include "Ray.h"
-#include "raytracing_config.hpp"
-#include "SchedulerLogger.h"
+#include "core/strategies/IRenderer.h"
+#include "core/utils/CacheModel.h"
+#include "core/utils/Metrics.h"
+#include "core/utils/SchedulerLogger.h"
 #include <vector>
-#include <thread>
 
 // CMPRenderer: modelo CMP (Chip Multiprocessing) — paralelismo real multinúcleo.
 //
@@ -31,15 +27,13 @@
 // el reloj de pared del sistema avanza al ritmo del núcleo más lento.
 // Cada núcleo paga su propio CACHE_MISS_PENALTY_NS (sin otro thread que lo oculte).
 //
-// Speedup teórico (Amdahl, fracción paralela ≈ 1): ~CMP_NUM_CORES × .
-// Con 4 núcleos y 4800 píxeles → cada núcleo procesa 1200 px en paralelo.
+// Cada core procesa un rango contiguo del frame en paralelo.
 /**
  * @brief Renderiza tiles en paralelo real con los workers CMP configurados.
  * @note El reloj virtual agregado es el máximo de los tiempos por core.
  */
 class CMPRenderer : public IRenderer {
 private:
-    Scene scene;
     std::vector<Vector3>              frame_;
     std::vector<CacheModel>           cache_models_;
     std::vector<trace::ThreadMetrics> core_stats_;
@@ -53,7 +47,6 @@ private:
     std::vector<CoreTile> tiles_;
 
     long long virtual_time_ns_ = 0LL;
-    Vector3   camera_pos_;
     SchedulerLogger logger_; // Traza ciclo-a-ciclo (activar con set_verbose)
 
     // Worker ejecutado por cada núcleo en un OS thread independiente.
@@ -68,10 +61,6 @@ public:
     // CacheModel semilla determinista: base 42 + core_id → reproducibilidad.
     /** @brief Divide el frame en CMP_NUM_CORES tiles independientes. */
     CMPRenderer();
-
-    // Actualiza la posición de cámara antes de render_frame() (órbita elíptica).
-    /** @param pos Posición de cámara para el siguiente frame. */
-    void set_camera_pos(const Vector3& pos) override { camera_pos_ = pos; }
 
     // Habilita la traza del scheduler para los primeros `cycles` ciclos de pipeline.
     // En CMP los núcleos corren en paralelo real: las líneas de log pueden intercalarse.
@@ -92,6 +81,12 @@ public:
     int get_total_stalls() const override {
         int total = 0;
         for (const auto& c : core_stats_) total += c.cache_misses;
+        return total;
+    }
+    /** @return Suma de latencias virtuales de misses de todos los cores, en ns. */
+    long long get_stall_time_ns() const override {
+        long long total = 0LL;
+        for (const auto& c : core_stats_) total += c.stall_time_ns;
         return total;
     }
     /** @return Estadísticas del último frame por core. */

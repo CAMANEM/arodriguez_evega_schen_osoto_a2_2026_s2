@@ -6,7 +6,6 @@
 #define VECTOR3_H
 
 #include <cmath>
-#include <iostream>
 
 /** @brief Vector tridimensional usado también para puntos y colores RGB. */
 struct Vector3 {

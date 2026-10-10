@@ -2,18 +2,16 @@
  * @file CoarseRenderer.cpp
  * @brief Scheduler CGMT que conserva el slot hasta un stall o fin de tile.
  */
-#include "CoarseRenderer.h"
-#include "raytracing_config.hpp"
-#include "Ray.h"
-#include "RendererUtils.h"
-#include "Workload.h"
+#include "core/strategies/CoarseRenderer.h"
+#include "core/config/raytracing_config.hpp"
+#include "core/utils/RendererUtils.h"
 
 using namespace constants;
 using namespace trace;
 
 /** @brief Divide el frame y prepara caches y estado del scheduler CGMT. */
 CoarseRenderer::CoarseRenderer()
-    : scene(), frame(IMAGE_WIDTH * IMAGE_HEIGHT),
+    : frame(IMAGE_WIDTH * IMAGE_HEIGHT),
       current_thread(0), threads_finished(0), global_clock_(0) {
 
     tasks.resize(NUM_THREADS);
@@ -108,15 +106,19 @@ void CoarseRenderer::render_worker(int thread_id) {
             // reintentará el mismo píxel (puede que ya esté en cache).
             stats.cache_misses++;
             stats.virtual_time_ns += CONTEXT_SWITCH_COST_NS;
+            stats.stall_time_ns += CONTEXT_SWITCH_COST_NS;
             pending_stall = true;
+            const int previous_thread = current_thread;
             switch_to_next_thread();
+            if (current_thread != previous_thread)
+                stats.context_switches++;
             const int cycle = global_clock_++;
             const std::string note = "ctx switch→T" + std::to_string(current_thread);
             logger_.log_stall(cycle, thread_id, x, y, CONTEXT_SWITCH_COST_NS, note.c_str());
         } else {
             // ── COMPUTE ────────────────────────────────────────────────────
             // Renderizar pixel y avanzar al siguiente de este tile
-            frame[pixel_idx] = compute_pixel(scene, x, y, camera_pos_, workload_);
+            frame[pixel_idx] = pixel_kernel_.compute(x, y);
             stats.virtual_time_ns += PIXEL_QUANTUM_NS;
             pending_stall = false;
             const int cycle = global_clock_++;
@@ -127,7 +129,10 @@ void CoarseRenderer::render_worker(int thread_id) {
                 // Tile terminado: ceder al siguiente sin costo extra
                 thread_done[thread_id] = true;
                 threads_finished++;
+                const int previous_thread = current_thread;
                 switch_to_next_thread();
+                if (threads_finished < NUM_THREADS && current_thread != previous_thread)
+                    stats.context_switches++;
                 logger_.log_done(cycle, thread_id);
             }
         }

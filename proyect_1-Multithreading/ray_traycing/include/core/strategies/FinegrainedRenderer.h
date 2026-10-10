@@ -5,15 +5,12 @@
 #ifndef FINEGRAINED_RENDERER_H
 #define FINEGRAINED_RENDERER_H
 
-#include "IRenderer.h"
-#include "Scene.h"
-#include "CacheModel.h"
-#include "Metrics.h"
-#include "Ray.h"
-#include "raytracing_config.hpp"
-#include "SchedulerLogger.h"
+#include "core/strategies/IRenderer.h"
+#include "core/utils/CacheModel.h"
+#include "core/utils/Metrics.h"
+#include "core/config/raytracing_config.hpp"
+#include "core/utils/SchedulerLogger.h"
 #include <vector>
-#include <thread>
 #include <atomic>
 #include <condition_variable>
 #include <mutex>
@@ -56,9 +53,8 @@ private:
 // sem_wait() y, al terminar su ciclo, señala directamente al siguiente
 // thread con píxeles pendientes (skip de IDLE).
 //
-// Esto elimina los spurious wakeups que generaba notify_all():
-//   Antes : notify_all() → wakeup × NUM_THREADS × 192 000 ciclos
-//   Ahora : sem_post(next) → 1 wakeup × ciclos_activos
+// Cada semáforo despierta solo al siguiente worker activo. Los workers sin
+// trabajo permanecen bloqueados hasta que el último worker los libera.
 //
 // Comportamiento por ciclo:
 //   Sin stall : COMPUTE — renderiza el pixel y avanza (+PIXEL_QUANTUM_NS)
@@ -66,11 +62,10 @@ private:
 //                          (+NOP_PENALTY_NS)
 //   IDLE      : el thread duerme hasta broadcast final (no consume VT)
 //
-// Tiempo virtual = SUMA de los cuatro threads (pipeline compartido).
+// Tiempo virtual = suma del tiempo registrado por los workers activos.
 /** @brief Simula FGMT con un slot compartido y rotación en cada turno activo. */
 class FinegrainedRenderer : public IRenderer {
 private:
-    Scene scene;
     std::vector<Vector3>              frame;
     std::vector<CacheModel>           cache_models;
     std::vector<trace::ThreadMetrics> thread_stats;
@@ -82,10 +77,6 @@ private:
     std::vector<ThreadTile> tiles;
 
     long long virtual_time_ns_ = 0LL;
-
-    // Posición de cámara para el frame actual (actualizada por GenericRunner).
-    // Permite que el scheduler reciba la órbita elíptica sin cambiar su lógica.
-    Vector3 camera_pos_;
 
     // Scheduler FGMT: semáforo por thread para señalización punto a punto.
     // slots_[i]: thread i espera aquí su turno de pipeline.
@@ -105,15 +96,11 @@ private:
     void render_tile_worker(int thread_id);
 
 public:
-    // Constructor: divide el frame en 4 tiles 2×2 (uno por thread) e inicializa
-    // los CacheModel con semillas deterministas (base 42 + thread_id).
-    /** @brief Divide el frame entre NUM_THREADS y prepara cachés deterministas. */
+    // Divide los índices row-major en NUM_THREADS rangos contiguos; el último
+    // rango recibe cualquier residuo. Con 240x160 y cuatro workers son bandas
+    // horizontales de 40 filas. Cada worker usa una semilla de caché propia.
+    /** @brief Divide el frame en rangos contiguos e inicializa cachés deterministas. */
     FinegrainedRenderer();
-
-    // Actualiza la posición de cámara antes de render_frame().
-    // GenericRunner la llama una vez por frame; el scheduler FGMT no cambia.
-    /** @param pos Posición de cámara para el siguiente frame. */
-    void set_camera_pos(const Vector3& pos) override { camera_pos_ = pos; }
 
     // Habilita la traza del scheduler para los primeros `cycles` ciclos de pipeline.
     /** @param cycles Cantidad de ciclos iniciales que se registran. */
@@ -128,7 +115,7 @@ public:
     /** @return Identificador `fgmt`. */
     std::string get_model_name() const override { return "fgmt"; }
 
-    // get_thread_metrics(): estadísticas (misses, VT) de los 4 threads del último frame.
+    // get_thread_metrics(): estadísticas de misses y tiempo virtual por worker.
     /** @return Contadores por worker del último frame. */
     const std::vector<trace::ThreadMetrics>& get_thread_metrics() const override { return thread_stats; }
 
@@ -141,6 +128,18 @@ public:
     int get_total_stalls() const override {
         int total = 0;
         for (const auto& ts : thread_stats) total += ts.cache_misses;
+        return total;
+    }
+    /** @return Suma de latencias virtuales de stall de todos los workers. */
+    long long get_stall_time_ns() const override {
+        long long total = 0LL;
+        for (const auto& ts : thread_stats) total += ts.stall_time_ns;
+        return total;
+    }
+    /** @return Transferencias a un contexto distinto durante el último frame. */
+    int get_context_switches() const override {
+        int total = 0;
+        for (const auto& ts : thread_stats) total += ts.context_switches;
         return total;
     }
 };

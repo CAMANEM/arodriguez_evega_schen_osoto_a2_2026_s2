@@ -5,17 +5,13 @@
 #ifndef COARSE_RENDERER_H
 #define COARSE_RENDERER_H
 
-#include "IRenderer.h"
-#include "Scene.h"
-#include "CacheModel.h"
-#include "Metrics.h"
-#include "Ray.h"
-#include "SchedulerLogger.h"
+#include "core/strategies/IRenderer.h"
+#include "core/utils/CacheModel.h"
+#include "core/utils/Metrics.h"
+#include "core/utils/SchedulerLogger.h"
 #include <vector>
-#include <thread>
 #include <mutex>
 #include <condition_variable>
-#include <atomic>
 
 // CoarseRenderer: Renderizador CGMT (Coarse-Grained Multithreading).
 //
@@ -38,7 +34,6 @@
 /** @brief Simula CGMT con un slot y cambio de contexto al detectar stalls. */
 class CoarseRenderer : public IRenderer {
 private:
-    Scene scene;
     std::vector<Vector3> frame;
     std::vector<CacheModel> cache_models;
     std::vector<trace::ThreadMetrics> thread_stats;
@@ -60,10 +55,6 @@ private:
 
     long long virtual_time_ns_ = 0LL;
 
-    // Posición de cámara para el frame actual (actualizada por GenericRunner).
-    // Permite recibir la órbita elíptica sin modificar el scheduler CGMT.
-    Vector3 camera_pos_;
-
     // switch_to_next_thread(): Scheduler hardware CGMT.
     // Busca el siguiente thread activo (round-robin, saltando los terminados).
     // Debe llamarse mientras se sostiene sched_mutex.
@@ -75,11 +66,6 @@ private:
 public:
     /** @brief Divide el frame entre NUM_THREADS e inicializa el scheduler. */
     CoarseRenderer();
-
-    // Actualiza la posición de cámara antes de render_frame().
-    // GenericRunner la llama una vez por frame; el scheduler CGMT no cambia.
-    /** @param pos Posición de cámara para el siguiente frame. */
-    void set_camera_pos(const Vector3& pos) override { camera_pos_ = pos; }
 
     // Habilita la traza del scheduler para los primeros `cycles` ciclos de pipeline.
     /** @param cycles Cantidad de ciclos iniciales que se registran. */
@@ -99,6 +85,18 @@ public:
     int get_total_stalls() const override {
         int total = 0;
         for (const auto& ts : thread_stats) total += ts.cache_misses;
+        return total;
+    }
+    /** @return Penalización virtual de cambio asociada a misses, en ns. */
+    long long get_stall_time_ns() const override {
+        long long total = 0LL;
+        for (const auto& ts : thread_stats) total += ts.stall_time_ns;
+        return total;
+    }
+    /** @return Transferencias reales entre contextos simulados. */
+    int get_context_switches() const override {
+        int total = 0;
+        for (const auto& ts : thread_stats) total += ts.context_switches;
         return total;
     }
 };

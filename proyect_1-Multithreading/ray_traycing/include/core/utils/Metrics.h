@@ -15,6 +15,8 @@ struct ThreadMetrics {
     long long nops_count = 0;           /**< NOPs simulados ejecutados. */
     double nop_time_ns = 0.0;           /**< Tiempo acumulado en NOPs, en ns. */
     int cache_misses = 0;               /**< Misses de caché observados. */
+    long long stall_time_ns = 0LL;      /**< Latencia virtual atribuida a stalls, en ns. */
+    int context_switches = 0;            /**< Transferencias del scheduler a otro contexto. */
     long long virtual_time_ns = 0LL;    /**< Tiempo virtual acumulado, en ns. */
 };
 

@@ -5,12 +5,12 @@
 #ifndef RENDERER_FACTORY_H
 #define RENDERER_FACTORY_H
 
-#include "IRenderer.h"
-#include "SequentialRenderer.h"
-#include "FinegrainedRenderer.h"
-#include "CoarseRenderer.h"
-#include "SMTRenderer.h"
-#include "CMPRenderer.h"
+#include "core/strategies/IRenderer.h"
+#include "core/strategies/SequentialRenderer.h"
+#include "core/strategies/FinegrainedRenderer.h"
+#include "core/strategies/CoarseRenderer.h"
+#include "core/strategies/SMTRenderer.h"
+#include "core/strategies/CMPRenderer.h"
 #include <functional>
 #include <memory>
 #include <stdexcept>
@@ -38,13 +38,6 @@ class RendererFactory {
         return reg;
     }
 
-    // Registro de modelos en desarrollo: modelo → mensaje de error.
-    static const std::unordered_map<std::string, std::string>& dev_registry() {
-        static const std::unordered_map<std::string, std::string> reg = {
-        };
-        return reg;
-    }
-
 public:
     /**
      * @brief Construye el renderer solicitado.
@@ -57,10 +50,6 @@ public:
         auto it = available_registry().find(model_name);
         if (it != available_registry().end())
             return it->second();
-
-        auto dev_it = dev_registry().find(model_name);
-        if (dev_it != dev_registry().end())
-            throw std::runtime_error(dev_it->second);
 
         throw std::invalid_argument(
             "Unknown model: " + model_name + ". Available: sequential, fgmt, cgmt, smt, cmp");

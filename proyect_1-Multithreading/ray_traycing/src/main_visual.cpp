@@ -2,11 +2,11 @@
  * @file main_visual.cpp
  * @brief Renderiza modelos a PPM y genera la animación orbital de cámara.
  */
-#include "raytracing_config.hpp"
-#include "IRenderer.h"
-#include "RendererFactory.h"
-#include "core/CameraOrbit.h"
-#include "image_io.hpp"
+#include "core/config/raytracing_config.hpp"
+#include "core/strategies/IRenderer.h"
+#include "core/strategies/RendererFactory.h"
+#include "core/camera/CameraOrbit.h"
+#include "core/utils/image_io.hpp"
 #include <filesystem>
 #include <iostream>
 #include <memory>
@@ -32,29 +32,23 @@ static std::string output_for_model(const std::string& output, const std::string
 /**
  * @brief Renderiza uno o todos los modelos y exporta imágenes PPM.
  * @param argc Cantidad de argumentos CLI.
- * @param argv Argumentos de selección, carga y salida.
+ * @param argv Argumentos de selección de modelo y salida.
  * @return 0 si el render y las exportaciones terminan correctamente; 1 ante error.
  */
 int main(int argc, char* argv[]) {
 	try {
 		std::string model = "all";
 		std::string output = constants::RESULTS_DIR + "/frame.ppm";
-		Workload workload = Workload::raytracing;
 		bool generate_gif = true;
 
 		for (int i = 1; i < argc; ++i) {
 			const std::string argument = argv[i];
 			if (argument == "--help" || argument == "-h") {
 				std::cout << "Usage: raytracing_visual [--model all|sequential|fgmt|cgmt|smt|cmp] "
-							 "[--workload raytracing|dummy] [--output FRAME.ppm] [--no-gif]\n";
+							 "[--output FRAME.ppm] [--no-gif]\n";
 				return 0;
 			} else if (argument == "--model" && i + 1 < argc) {
 				model = argv[++i];
-			} else if (argument == "--workload" && i + 1 < argc) {
-				const std::string value = argv[++i];
-				if (value == "dummy") workload = Workload::dummy;
-				else if (value != "raytracing")
-					throw std::invalid_argument("workload must be raytracing or dummy");
 			} else if (argument == "--output" && i + 1 < argc) {
 				output = argv[++i];
 			} else if (argument == "--no-gif") {
@@ -83,7 +77,6 @@ int main(int argc, char* argv[]) {
 
 		for (const std::string& selected_model : selected_models) {
 			std::unique_ptr<IRenderer> renderer = RendererFactory::create(selected_model);
-			renderer->set_workload(workload);
 			renderer->set_camera_pos(constants::CAMERA_ORIGIN);
 			const std::string frame_path = model == "all"
 				? output_for_model(output, selected_model) : output;

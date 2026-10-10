@@ -5,7 +5,7 @@
 #ifndef RAYTRACING_CONFIG_HPP
 #define RAYTRACING_CONFIG_HPP
 
-#include "Vector3.h"
+#include "core/geometry/Vector3.h"
 #include <algorithm>
 #include <array>
 #include <string>
@@ -24,9 +24,6 @@ struct SphereConfig {
 inline constexpr int IMAGE_WIDTH = 240;
 /** @brief Resolución vertical del frame, en píxeles. */
 inline constexpr int IMAGE_HEIGHT = 160;
-/** @brief Cantidad de frames de animación usada por clientes que la requieran. */
-inline constexpr int NUM_FRAMES = 200;
-
 /**
  * @brief Tres esferas sobre X: roja a la izquierda, verde al centro y azul a la derecha.
  * @details La esfera verde está centrada en SCENE_CENTER y cada esfera tiene radio distinto.
@@ -58,13 +55,10 @@ inline constexpr int CAMERA_ORBIT_FRAME_COUNT = 72;
 inline constexpr int CAMERA_ORBIT_FRAME_DELAY_MS = 50;
 
 /** @brief Rutas de resultados y recursos, relativas al directorio de ejecución. */
-inline const std::string GIF_FRAMES_DIR = "data/gif_frames";
 inline const std::string CAMERA_ORBIT_FRAMES_DIR = "data/camera_orbit_frames";
 inline const std::string CAMERA_ORBIT_GIF_PATH = "data/camera_orbit.gif";
 inline const std::string CAMERA_ORBIT_GIF_SCRIPT = "scripts/create_camera_gif.py";
 inline const std::string RESULTS_DIR = "data";
-inline const std::string IMAGE_DIR = "data/image";
-inline const std::string GRAPHS_DIR = "data/graficas";
 inline const std::string IMAGE_FILE_SEQUENTIAL = "data/image/frame_secuencial.ppm";
 inline const std::string IMAGE_FILE_FGMT = "data/image/frame_fgmt.ppm";
 inline const std::string IMAGE_FILE_CGMT = "data/image/frame_cgmt.ppm";

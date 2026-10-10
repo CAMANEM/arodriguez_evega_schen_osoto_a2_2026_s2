@@ -2,19 +2,17 @@
  * @file SMTRenderer.cpp
  * @brief Simulación por ciclos de issue SMT con contextos virtuales.
  */
-#include "SMTRenderer.h"
-#include "raytracing_config.hpp"
-#include "Ray.h"
-#include "RendererUtils.h"
-#include "Workload.h"
-#include <limits>
+#include "core/strategies/SMTRenderer.h"
+#include "core/config/raytracing_config.hpp"
+#include "core/utils/RendererUtils.h"
+#include <cstdint>
 
 using namespace constants;
 using namespace trace;
 
 /** @brief Crea los contextos SMT y divide el frame entre sus rangos. */
 SMTRenderer::SMTRenderer()
-    : scene_(), frame_(IMAGE_WIDTH * IMAGE_HEIGHT), global_clock_(0)
+    : frame_(IMAGE_WIDTH * IMAGE_HEIGHT), global_clock_(0)
 {
     const int total      = IMAGE_WIDTH * IMAGE_HEIGHT;
     const int context_count = smt_context_count();
@@ -29,7 +27,7 @@ SMTRenderer::SMTRenderer()
     // Semilla determinista por contexto: 42+id garantiza reproducibilidad
     cache_models_.resize(context_count);
     for (int i = 0; i < context_count; ++i)
-        cache_models_[i] = CacheModel(CACHE_SIZE, 42u + static_cast<uint32_t>(i));
+        cache_models_[i] = CacheModel(CACHE_SIZE, 42u + static_cast<std::uint32_t>(i));
 
     thread_stats_.resize(context_count);
     for (int i = 0; i < context_count; ++i)
@@ -41,8 +39,6 @@ SMTRenderer::SMTRenderer()
     pending_stall_.resize(context_count, false);
 }
 
-// render_pixel: función auxiliar que produce el color de un píxel completo.
-// Sin descomposición en etapas: correctness garantizado (equivalente a Scene::trace()).
 /**
  * @brief Traza un rayo y busca el color de la esfera visible más cercana.
  * @param scene Escena intersectada.
@@ -51,17 +47,6 @@ SMTRenderer::SMTRenderer()
  * @param cam Posición de cámara.
  * @return Color de la intersección más cercana o del fondo.
  */
-static Vector3 render_raytraced_pixel(const Scene& scene, int x, int y, const Vector3& cam) {
-    Ray    r    = make_ray(x, y, cam);
-    double tmin = std::numeric_limits<double>::infinity();
-    int    hit  = -1;
-    for (int k = 0; k < static_cast<int>(scene.spheres.size()); ++k) {
-        double t = 0.0;
-        if (scene.spheres[k].intersect(r, t) && t < tmin) { tmin = t; hit = k; }
-    }
-    return (hit >= 0) ? scene.spheres[hit].color : constants::BACKGROUND_COLOR;
-}
-
 // render_frame: simulación SMT pura por píxel (sin OS threads, sin semáforos).
 //
 // Modelo de hardware:
@@ -131,14 +116,14 @@ std::vector<Vector3> SMTRenderer::render_frame() {
                 // siguiente thread listo (el bucle continúa hacia attempt+1).
                 // El stall queda oculto: 0 VT desperdiciado por este hilo.
                 thread_stats_[tid].cache_misses++;
+                thread_stats_[tid].stall_time_ns += CACHE_MISS_PENALTY_NS;
+                thread_stats_[tid].context_switches++;
                 stall_countdown_[tid] = CACHE_MISS_PENALTY_NS / PIXEL_QUANTUM_NS;
                 pending_stall_[tid] = true;
                 logger_.log_stall(global_clock_, tid, x, y, 0LL, "miss→ejected");
             } else {
                 // HIT (o dato ya en cache tras stall): slot ocupado productivamente.
-                frame_[px] = workload_ == Workload::dummy
-                    ? compute_pixel(scene_, x, y, camera_pos_, workload_)
-                    : render_raytraced_pixel(scene_, x, y, camera_pos_);
+                frame_[px] = pixel_kernel_.compute(x, y);
                 thread_stats_[tid].virtual_time_ns += PIXEL_QUANTUM_NS;
                 pending_stall_[tid] = false;
                 logger_.log_compute(global_clock_, tid, x, y, PIXEL_QUANTUM_NS);

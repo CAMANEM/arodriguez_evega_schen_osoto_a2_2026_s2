@@ -6,6 +6,7 @@
 #define CACHE_MODEL_H
 
 #include <cmath>
+#include <cstdint>
 #include <random>
 
 /**
@@ -28,7 +29,7 @@ public:
      * @param seed Semilla del generador; usar una distinta por contexto.
      * @pre cache_size debe ser positivo.
      */
-    CacheModel(int cache_size = 32768, uint32_t seed = 42u)
+    CacheModel(int cache_size = 32768, std::uint32_t seed = 42u)
         : cache_size(cache_size), last_miss_x(0), last_miss_y(0), dist(0.0, 1.0) {
         rng.seed(seed);
     }

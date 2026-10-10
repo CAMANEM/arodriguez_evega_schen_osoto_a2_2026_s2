@@ -2,14 +2,13 @@
  * @file SequentialRenderer.cpp
  * @brief Implementación del baseline que renderiza los píxeles en orden.
  */
-#include "SequentialRenderer.h"
-#include "raytracing_config.hpp"
-#include "Workload.h"
+#include "core/strategies/SequentialRenderer.h"
+#include "core/config/raytracing_config.hpp"
 
 using namespace constants;
 
 /** @brief Inicializa escena y caché con la capacidad configurada. */
-SequentialRenderer::SequentialRenderer() : scene(), cache(CACHE_SIZE) {}
+SequentialRenderer::SequentialRenderer() : cache(CACHE_SIZE) {}
 
 // render_frame: Renderiza todos los píxeles en orden row-major con un solo thread.
 //
@@ -25,6 +24,7 @@ std::vector<Vector3> SequentialRenderer::render_frame() {
     std::vector<Vector3> frame(IMAGE_WIDTH * IMAGE_HEIGHT);
     virtual_time_ns_ = 0LL;
     stall_count_ = 0;
+    stall_time_ns_ = 0LL;
     int cycle = 0;
 
     // Reiniciar cache
@@ -35,7 +35,7 @@ std::vector<Vector3> SequentialRenderer::render_frame() {
     // Renderizar con reloj virtual
     for (int y = 0; y < IMAGE_HEIGHT; ++y) {
         for (int x = 0; x < IMAGE_WIDTH; ++x) {
-            frame[y * IMAGE_WIDTH + x] = render_pixel(x, y);
+            frame[y * IMAGE_WIDTH + x] = pixel_kernel_.compute(x, y);
 
             // Quantum: tiempo base por pixel (igual en todos los modelos)
             virtual_time_ns_ += PIXEL_QUANTUM_NS;
@@ -45,6 +45,7 @@ std::vector<Vector3> SequentialRenderer::render_frame() {
             if (cache.is_cache_miss(x, y)) {
                 // Cache miss: stall completo (no hay otro thread que ejecute)
                 virtual_time_ns_ += CACHE_MISS_PENALTY_NS;
+                stall_time_ns_ += CACHE_MISS_PENALTY_NS;
                 ++stall_count_;
                 logger_.log_stall(cycle, 0, x, y, CACHE_MISS_PENALTY_NS, "no ctx switch");
             }
