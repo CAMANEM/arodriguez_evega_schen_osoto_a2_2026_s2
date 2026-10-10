@@ -12,10 +12,12 @@ public:
 
     const std::string& getSchemeName() const;
     int getParticlesProcessed() const;
+    double getMeasuredSeconds() const;
 
 private:
     std::string schemeName_;
     int particlesProcessed_;
+    double measuredSeconds_;
 };
 
 #endif

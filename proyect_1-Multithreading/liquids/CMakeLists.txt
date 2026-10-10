@@ -15,6 +15,8 @@ add_library(liquids_core STATIC
     src/core/SphFluid.cpp
     src/core/SphMetrics.cpp
     src/core/SphParticle.cpp
+    src/core/SphForces.cpp
+    src/core/SequentialSphScheme.cpp
     ../shared/src/metrics_interface.cpp
 )
 
