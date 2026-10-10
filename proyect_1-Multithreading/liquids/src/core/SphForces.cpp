@@ -51,17 +51,25 @@ SphNeighborList SphForces::findNeighbors(const SphFluid& fluid,
                                           const SphConfig& config) {
     SphNeighborList neighbors(
         static_cast<std::size_t>(fluid.getParticleCount()));
+    for (int index = 0; index < fluid.getParticleCount(); ++index) {
+        neighbors[static_cast<std::size_t>(index)] =
+            findNeighborsForParticle(index, fluid, config);
+    }
+    return neighbors;
+}
+
+std::vector<int> SphForces::findNeighborsForParticle(
+    int particleIndex, const SphFluid& fluid, const SphConfig& config) {
+    std::vector<int> neighbors;
     const double h2 = config.getSmoothingLength() *
                       config.getSmoothingLength();
-    for (int index = 0; index < fluid.getParticleCount(); ++index) {
-        for (int otherIndex = 0; otherIndex < fluid.getParticleCount();
-             ++otherIndex) {
-            double dx = 0.0;
-            double dy = 0.0;
-            if (squaredDistance(fluid.getParticle(index),
-                                fluid.getParticle(otherIndex), dx, dy) < h2) {
-                neighbors[static_cast<std::size_t>(index)].push_back(otherIndex);
-            }
+    for (int otherIndex = 0; otherIndex < fluid.getParticleCount();
+         ++otherIndex) {
+        double dx = 0.0;
+        double dy = 0.0;
+        if (squaredDistance(fluid.getParticle(particleIndex),
+                            fluid.getParticle(otherIndex), dx, dy) < h2) {
+            neighbors.push_back(otherIndex);
         }
     }
     return neighbors;
@@ -79,6 +87,15 @@ double SphForces::computeDensityForParticle(int particleIndex,
     }
     return std::max(
         density, config.getRestDensity() * config.getMinDensityRatio());
+}
+
+double SphForces::computePressureForParticle(const SphParticle& particle,
+                                             const SphConfig& config) {
+    const double rawPressure =
+        config.getGasStiffness() *
+        (particle.getDensity() - config.getRestDensity());
+    return std::clamp(rawPressure, -config.getMaxPressure(),
+                      config.getMaxPressure());
 }
 
 double SphForces::computeDensityContribution(int particleIndex,
@@ -105,11 +122,7 @@ void SphForces::computeAllDensities(SphFluid& fluid, const SphConfig& config,
 void SphForces::computeAllPressures(SphFluid& fluid, const SphConfig& config) {
     for (int index = 0; index < fluid.getParticleCount(); ++index) {
         SphParticle& particle = fluid.getParticle(index);
-        const double rawPressure =
-            config.getGasStiffness() *
-            (particle.getDensity() - config.getRestDensity());
-        particle.setPressure(std::clamp(rawPressure, -config.getMaxPressure(),
-                                         config.getMaxPressure()));
+        particle.setPressure(computePressureForParticle(particle, config));
     }
 }
 
@@ -120,6 +133,15 @@ std::vector<SphForceData> SphForces::computeAllForces(
         static_cast<std::size_t>(fluid.getParticleCount()), {0.0, 0.0});
 
     for (int index = 0; index < fluid.getParticleCount(); ++index) {
+        forces[static_cast<std::size_t>(index)] =
+            computeForceForParticle(index, fluid, config, neighbors);
+    }
+    return forces;
+}
+
+SphForceData SphForces::computeForceForParticle(
+    int index, const SphFluid& fluid, const SphConfig& config,
+    const SphNeighborList& neighbors) {
         const SphParticle& particle = fluid.getParticle(index);
         SphForceData force{0.0, particle.get_mass() * config.getGravity()};
 
@@ -165,23 +187,26 @@ std::vector<SphForceData> SphForces::computeAllForces(
                                              particle.get_speed_y()) *
                             laplacian;
         }
-        forces[static_cast<std::size_t>(index)] = force;
-    }
-    return forces;
+        return force;
 }
 
 void SphForces::applyForcesAndIntegrate(
     SphFluid& fluid, const SphConfig& config,
     const std::vector<SphForceData>& forces) {
     for (int index = 0; index < fluid.getParticleCount(); ++index) {
-        const SphForceData& force = forces.at(static_cast<std::size_t>(index));
-        SphParticle& particle = fluid.getParticle(index);
-        particle.set_force(force.forceX, force.forceY);
-        particle.update(config.getDeltaTime());
+        integrateParticle(fluid.getParticle(index), config,
+                          forces.at(static_cast<std::size_t>(index)));
+    }
+}
 
-        const double speedSquared =
-            particle.get_speed_x() * particle.get_speed_x() +
-            particle.get_speed_y() * particle.get_speed_y();
+void SphForces::integrateParticle(SphParticle& particle,
+                                   const SphConfig& config,
+                                   const SphForceData& force) {
+    particle.set_force(force.forceX, force.forceY);
+    particle.update(config.getDeltaTime());
+    const double speedSquared =
+        particle.get_speed_x() * particle.get_speed_x() +
+        particle.get_speed_y() * particle.get_speed_y();
         const double maxSpeedSquared =
             config.getMaxSpeed() * config.getMaxSpeed();
         if (speedSquared > maxSpeedSquared) {
@@ -190,12 +215,16 @@ void SphForces::applyForcesAndIntegrate(
             particle.set_velocity(particle.get_speed_x() * scale,
                                   particle.get_speed_y() * scale);
         }
-    }
 }
 
 void SphForces::applyBoundary(SphFluid& fluid, const SphConfig& config) {
     for (int index = 0; index < fluid.getParticleCount(); ++index) {
-        SphParticle& particle = fluid.getParticle(index);
+        applyBoundaryToParticle(fluid.getParticle(index), config);
+    }
+}
+
+void SphForces::applyBoundaryToParticle(SphParticle& particle,
+                                         const SphConfig& config) {
         if (particle.get_pos_x() < 0.0) {
             particle.set_position(0.0, particle.get_pos_y());
             particle.set_velocity(particle.get_speed_x() *
@@ -219,6 +248,5 @@ void SphForces::applyBoundary(SphFluid& fluid, const SphConfig& config) {
             particle.set_velocity(particle.get_speed_x(),
                                   particle.get_speed_y() *
                                       config.getBoundaryDamping());
-        }
     }
 }
