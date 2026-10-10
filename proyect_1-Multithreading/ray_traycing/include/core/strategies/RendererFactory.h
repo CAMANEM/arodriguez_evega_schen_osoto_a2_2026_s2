@@ -11,6 +11,7 @@
 #include "core/strategies/CoarseRenderer.h"
 #include "core/strategies/SMTRenderer.h"
 #include "core/strategies/CMPRenderer.h"
+#include "core/config/raytracing_config.hpp"
 #include <functional>
 #include <memory>
 #include <stdexcept>
@@ -24,16 +25,28 @@
  * de la interfaz y no de las clases concretas.
  */
 class RendererFactory {
-    using FactoryFn = std::function<std::unique_ptr<IRenderer>()>;
+    using FactoryFn = std::function<std::unique_ptr<IRenderer>(int)>;
 
     // Registro de modelos disponibles: modelo → factory lambda.
     static const std::unordered_map<std::string, FactoryFn>& available_registry() {
         static const std::unordered_map<std::string, FactoryFn> reg = {
-            {"sequential", [] { return std::make_unique<SequentialRenderer>(); }},
-            {"fgmt",       [] { return std::make_unique<FinegrainedRenderer>(); }},
-            {"cgmt",       [] { return std::make_unique<CoarseRenderer>(); }},
-            {"smt",        [] { return std::make_unique<SMTRenderer>(); }},
-            {"cmp",        [] { return std::make_unique<CMPRenderer>(); }},
+            {"sequential", [](int) { return std::make_unique<SequentialRenderer>(); }},
+            {"fgmt", [](int workers) {
+                return workers > 0 ? std::make_unique<FinegrainedRenderer>(workers)
+                                  : std::make_unique<FinegrainedRenderer>();
+            }},
+            {"cgmt", [](int workers) {
+                return workers > 0 ? std::make_unique<CoarseRenderer>(workers)
+                                  : std::make_unique<CoarseRenderer>();
+            }},
+            {"smt", [](int workers) {
+                return workers > 0 ? std::make_unique<SMTRenderer>(workers)
+                                  : std::make_unique<SMTRenderer>();
+            }},
+            {"cmp", [](int workers) {
+                return workers > 0 ? std::make_unique<CMPRenderer>(workers)
+                                  : std::make_unique<CMPRenderer>();
+            }},
         };
         return reg;
     }
@@ -47,9 +60,19 @@ public:
      * @throws std::invalid_argument Si el identificador no se reconoce.
      */
     static std::unique_ptr<IRenderer> create(const std::string& model_name) {
+        return create(model_name, 0);
+    }
+
+    /**
+     * @brief Construye un modelo paralelo con una cantidad explícita de workers.
+     * @param model_name Identificador del modelo.
+     * @param workers Cantidad de workers o contextos virtuales.
+     * @return Renderer propietario mediante unique_ptr.
+     */
+    static std::unique_ptr<IRenderer> create(const std::string& model_name, int workers) {
         auto it = available_registry().find(model_name);
         if (it != available_registry().end())
-            return it->second();
+            return it->second(workers);
 
         throw std::invalid_argument(
             "Unknown model: " + model_name + ". Available: sequential, fgmt, cgmt, smt, cmp");
@@ -62,9 +85,10 @@ public:
 
     /** @return Texto de ayuda con modelos y opciones registradas. */
     static std::string get_help_message() {
-        return "Usage: ./raytracer [--model MODEL] [--runs N] [--verbose N]\n"
+        return "Usage: ./raytracer [--model MODEL] [--runs N] [--workers N] [--verbose N]\n"
                "Models available: sequential, fgmt, cgmt, smt, cmp\n"
                "Options:\n"
+               "  --workers N  Workers for FGMT/CGMT/CMP; virtual contexts for SMT\n"
                "  --verbose N   Imprimir los primeros N ciclos del scheduler (todos los modelos)\n"
                "Example: ./raytracer --model smt --runs 1 --verbose 30\n";
     }

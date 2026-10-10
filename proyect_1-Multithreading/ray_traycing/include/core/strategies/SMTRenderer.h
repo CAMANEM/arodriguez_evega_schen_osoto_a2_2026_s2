@@ -46,8 +46,8 @@
  */
 class SMTRenderer : public IRenderer {
 public:
-    /** @brief Crea contextos según smt_context_count() y distribuye los píxeles. */
-    SMTRenderer();
+    /** @param contexts Cantidad de contextos virtuales; no crea OS threads. */
+    explicit SMTRenderer(int contexts = constants::smt_context_count());
 
     // Habilitar logging ciclo a ciclo. cycles = número de ciclos a imprimir (0 = off).
     /** @param cycles Cantidad de ciclos iniciales que se registran. */
@@ -87,6 +87,7 @@ public:
     }
 
 private:
+    const int worker_count_;
     // Rango de píxeles asignado a cada contexto virtual.
     struct Task { int start, end; };
 

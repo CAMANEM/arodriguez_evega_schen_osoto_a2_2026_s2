@@ -12,9 +12,9 @@
 #include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <iterator>
 #include <memory>
 #include <cmath>
-#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -33,6 +33,7 @@ struct BenchmarkMetrics {
 		double execution_time_s;
 		long long virtual_time_ns;
 		long long stall_time_ns;
+		long long context_switch_time_ns;
 		int stall_count;
 		int context_switches;
 	};
@@ -124,10 +125,19 @@ static const ModelConfig models[] = {
  * @return Referencia a su configuración estática.
  * @throws std::invalid_argument Si el modelo no está registrado.
  */
-static const ModelConfig& find_model(const std::string& name) {
-	for (const ModelConfig& model : models)
+static const ModelConfig& find_model(const std::vector<ModelConfig>& configured_models,
+									 const std::string& name) {
+	for (const ModelConfig& model : configured_models)
 		if (name == model.name) return model;
 	throw std::invalid_argument("unknown model: " + name);
+}
+
+static int parse_positive_integer(const std::string& value, const char* option) {
+	std::size_t parsed = 0;
+	const int result = std::stoi(value, &parsed);
+	if (parsed != value.size() || result < 1)
+		throw std::invalid_argument(std::string(option) + " must be a positive integer");
+	return result;
 }
 
 /**
@@ -137,22 +147,28 @@ static const ModelConfig& find_model(const std::string& name) {
  * @param last_frame Si no es nulo, recibe el último frame producido.
  * @return Métricas de las muestras renderizadas, en segundos.
  */
-static void run_model(const ModelConfig& config, int runs,
-					  const std::string& frame_csv_path) {
-	std::unique_ptr<IRenderer> renderer = RendererFactory::create(config.name);
+static BenchmarkMetrics run_model(const ModelConfig& config, int runs,
+								  const std::string& frame_csv_path,
+								  bool write_frame_csv) {
+	std::unique_ptr<IRenderer> renderer =
+		RendererFactory::create(config.name, config.workers);
 	renderer->set_camera_pos(constants::CAMERA_ORIGIN);
 	renderer->set_verbose(0);
 
-	const std::filesystem::path output(frame_csv_path);
-	if (output.has_parent_path())
-		std::filesystem::create_directories(output.parent_path());
-	std::ofstream frame_csv(frame_csv_path);
-	if (!frame_csv)
-		throw std::runtime_error("could not open frame metrics output: " + frame_csv_path);
-	frame_csv << "frame,model,n_workers,execution_time_s,virtual_time_ns,"
-				 "stall_time_ns,stall_count,context_switches\n";
-	frame_csv << std::setprecision(12);
+	std::ofstream frame_csv;
+	if (write_frame_csv) {
+		const std::filesystem::path output(frame_csv_path);
+		if (output.has_parent_path())
+			std::filesystem::create_directories(output.parent_path());
+		frame_csv.open(frame_csv_path);
+		if (!frame_csv)
+			throw std::runtime_error("could not open frame metrics output: " + frame_csv_path);
+		frame_csv << "frame,model,n_workers,execution_time_s,virtual_time_ns,"
+					 "stall_time_ns,context_switch_time_ns,stall_count,context_switches\n";
+		frame_csv << std::setprecision(12);
+	}
 
+	BenchmarkMetrics metrics(config.model, config.workers);
 	for (int run = 0; run < runs; ++run) {
 		Timer timer;
 		timer.start();
@@ -163,66 +179,27 @@ static void run_model(const ModelConfig& config, int runs,
 			execution_time_s,
 			renderer->get_virtual_time_ns(),
 			renderer->get_stall_time_ns(),
+			renderer->get_context_switch_time_ns(),
 			renderer->get_total_stalls(),
 			renderer->get_context_switches()
 		};
-		frame_csv << sample.frame << ',' << config.name << ',' << config.workers << ','
-				  << sample.execution_time_s << ',' << sample.virtual_time_ns << ','
-				  << sample.stall_time_ns << ',' << sample.stall_count << ','
-				  << sample.context_switches << '\n';
+		metrics.wall.record_time(sample.execution_time_s);
+		metrics.samples.push_back(sample);
+		if (write_frame_csv) {
+			frame_csv << sample.frame << ',' << config.name << ',' << config.workers << ','
+					  << sample.execution_time_s << ',' << sample.virtual_time_ns << ','
+					  << sample.stall_time_ns << ',' << sample.context_switch_time_ns << ','
+					  << sample.stall_count << ','
+					  << sample.context_switches << '\n';
+		}
 	}
+	return metrics;
 }
 
 static std::string frame_csv_path(const std::string& summary_path, const char* model) {
 	const std::filesystem::path summary(summary_path);
 	return (summary.parent_path() /
 		(summary.stem().string() + "_" + model + "_frames.csv")).string();
-}
-
-static BenchmarkMetrics read_frame_csv(const ModelConfig& config,
-									   const std::string& path,
-									   int expected_runs) {
-	std::ifstream frame_csv(path);
-	if (!frame_csv)
-		throw std::runtime_error("could not read frame metrics: " + path);
-
-	std::string line;
-	const std::string expected_header =
-		"frame,model,n_workers,execution_time_s,virtual_time_ns,"
-		"stall_time_ns,stall_count,context_switches";
-	if (!std::getline(frame_csv, line) || line != expected_header)
-		throw std::runtime_error("invalid frame metrics header: " + path);
-
-	BenchmarkMetrics metrics(config.model, config.workers);
-	while (std::getline(frame_csv, line)) {
-		std::istringstream row(line);
-		std::vector<std::string> fields;
-		std::string field;
-		while (std::getline(row, field, ','))
-			fields.push_back(field);
-		if (fields.size() != 8)
-			throw std::runtime_error("invalid frame metrics row: " + path);
-
-		const int frame = std::stoi(fields[0]);
-		const int workers = std::stoi(fields[2]);
-		if (fields[1] != config.name || workers != config.workers ||
-			frame != static_cast<int>(metrics.samples.size()) + 1)
-			throw std::runtime_error("inconsistent frame metrics row: " + path);
-
-		const BenchmarkMetrics::FrameSample sample{
-			frame,
-			std::stod(fields[3]),
-			std::stoll(fields[4]),
-			std::stoll(fields[5]),
-			std::stoi(fields[6]),
-			std::stoi(fields[7])
-		};
-		metrics.wall.record_time(sample.execution_time_s);
-		metrics.samples.push_back(sample);
-	}
-	if (static_cast<int>(metrics.samples.size()) != expected_runs)
-		throw std::runtime_error("unexpected number of frame samples in: " + path);
-	return metrics;
 }
 
 /**
@@ -252,7 +229,10 @@ static void write_csv(const std::string& path,
 	file << "model,workload,n_workers,runs,mean_execution_time_s,stddev_execution_time_s,"
 			"ci95_execution_lower_s,ci95_execution_upper_s,speedup,speedup_ci95_lower,"
 			"speedup_ci95_upper,efficiency,mean_stall_time_ns,stddev_stall_time_ns,"
-			"ci95_stall_time_lower_ns,ci95_stall_time_upper_ns,mean_stall_count,"
+			"ci95_stall_time_lower_ns,ci95_stall_time_upper_ns,"
+			"mean_context_switch_time_ns,stddev_context_switch_time_ns,"
+			"ci95_context_switch_time_lower_ns,ci95_context_switch_time_upper_ns,"
+			"mean_stall_count,"
 			"stddev_stall_count,mean_context_switches,stddev_context_switches,"
 			"mean_virtual_time_ns,virtual_speedup\n";
 	for (const auto& result : results) {
@@ -268,6 +248,10 @@ static void write_csv(const std::string& path,
 		const SummaryStats stall_count = summarize(benchmark.samples,
 			[](const BenchmarkMetrics::FrameSample& sample) {
 				return static_cast<double>(sample.stall_count);
+			});
+		const SummaryStats context_switch_time = summarize(benchmark.samples,
+			[](const BenchmarkMetrics::FrameSample& sample) {
+				return static_cast<double>(sample.context_switch_time_ns);
 			});
 		const SummaryStats context_switches = summarize(benchmark.samples,
 			[](const BenchmarkMetrics::FrameSample& sample) {
@@ -288,6 +272,8 @@ static void write_csv(const std::string& path,
 			 << speedup + speedup_half_width << ',' << metrics.efficiency() << ','
 			 << stall_time.mean << ',' << stall_time.stddev << ','
 			 << stall_time.ci_lower << ',' << stall_time.ci_upper << ','
+			 << context_switch_time.mean << ',' << context_switch_time.stddev << ','
+			 << context_switch_time.ci_lower << ',' << context_switch_time.ci_upper << ','
 			 << stall_count.mean << ',' << stall_count.stddev << ','
 			 << context_switches.mean << ',' << context_switches.stddev << ','
 			 << virtual_mean << ',' << virtual_speedup << '\n';
@@ -303,41 +289,59 @@ static void write_csv(const std::string& path,
 int main(int argc, char* argv[]) {
 	try {
 		int runs = 200;
+		int requested_workers = 0;
 		std::string selected_model = "all";
 		std::string output = constants::RESULTS_DIR + "/benchmark.csv";
-		bool generate_gif = true;
+		bool generate_gif = false;
+		bool write_frame_csv = false;
 
 		for (int i = 1; i < argc; ++i) {
 			const std::string argument = argv[i];
 			if (argument == "--help" || argument == "-h") {
 				std::cout << "Usage: raytracing_benchmark [--model all|sequential|fgmt|cgmt|smt|cmp] "
-							 "[--runs N] [--output CSV] [--no-gif]\n";
+							 "[--runs N] [--workers N] [--output CSV] [--frame-csv] [--gif]\n"
+							 "--workers configures FGMT/CGMT/CMP workers and SMT virtual contexts; "
+							 "sequential remains one worker.\n";
 				return 0;
 			} else if (argument == "--model" && i + 1 < argc) {
 				selected_model = argv[++i];
 			} else if (argument == "--runs" && i + 1 < argc) {
-				runs = std::stoi(argv[++i]);
-				if (runs < 1) throw std::invalid_argument("runs must be positive");
+				runs = parse_positive_integer(argv[++i], "runs");
+			} else if (argument == "--workers" && i + 1 < argc) {
+				requested_workers = parse_positive_integer(argv[++i], "workers");
+				if (requested_workers > constants::IMAGE_WIDTH * constants::IMAGE_HEIGHT)
+					throw std::invalid_argument("workers cannot exceed the number of pixels");
 			} else if (argument == "--output" && i + 1 < argc) {
 				output = argv[++i];
-			} else if (argument == "--no-gif") {
-				generate_gif = false;
+			} else if (argument == "--frame-csv") {
+				write_frame_csv = true;
+			} else if (argument == "--gif") {
+				generate_gif = true;
 			} else {
 				throw std::invalid_argument("unknown or incomplete argument: " + argument);
 			}
 		}
 
-		std::vector<const ModelConfig*> selected;
-		if (selected_model == "all") {
-			for (const ModelConfig& model : models) selected.push_back(&model);
-		} else {
-			selected.push_back(&find_model(selected_model));
+		std::vector<ModelConfig> configured_models(
+			std::begin(models), std::end(models));
+		if (requested_workers > 0) {
+			for (ModelConfig& config : configured_models)
+				if (config.model != execution_model::sequential)
+					config.workers = requested_workers;
 		}
 
-		const ModelConfig& sequential = models[0];
+		std::vector<const ModelConfig*> selected;
+		if (selected_model == "all") {
+			for (const ModelConfig& model : configured_models)
+				selected.push_back(&model);
+		} else {
+			selected.push_back(&find_model(configured_models, selected_model));
+		}
+
+		const ModelConfig& sequential = configured_models[0];
 		const std::string sequential_csv = frame_csv_path(output, sequential.name);
-		run_model(sequential, runs, sequential_csv);
-		BenchmarkMetrics baseline = read_frame_csv(sequential, sequential_csv, runs);
+		BenchmarkMetrics baseline = run_model(
+			sequential, runs, sequential_csv, write_frame_csv);
 		baseline.wall.set_sequential_time(baseline.wall.mean_time());
 		const double sequential_virtual_time_ns = baseline.mean_virtual_time_ns();
 
@@ -346,8 +350,7 @@ int main(int argc, char* argv[]) {
 			BenchmarkMetrics metrics = baseline;
 			if (config->model != execution_model::sequential) {
 				const std::string model_csv = frame_csv_path(output, config->name);
-				run_model(*config, runs, model_csv);
-				metrics = read_frame_csv(*config, model_csv, runs);
+				metrics = run_model(*config, runs, model_csv, write_frame_csv);
 			}
 			metrics.wall.set_sequential_time(baseline.wall.mean_time());
 			results.emplace_back(config, metrics);
@@ -372,15 +375,18 @@ int main(int argc, char* argv[]) {
 		}
 		std::cout << "CSV: " << output << '\n';
 		if (generate_gif) {
-			render_camera_orbit_gif();
+			render_camera_orbit_gif(requested_workers > 0
+				? requested_workers : constants::CMP_NUM_CORES);
 			std::cout << "GIF: " << constants::CAMERA_ORBIT_GIF_PATH << '\n';
 		}
-		std::cout << "Frame CSV (sequential): "
-				  << frame_csv_path(output, sequential.name) << '\n';
-		for (const ModelConfig* config : selected) {
-			if (config->model != execution_model::sequential)
-				std::cout << "Frame CSV (" << config->name << "): "
-						  << frame_csv_path(output, config->name) << '\n';
+		if (write_frame_csv) {
+			std::cout << "Frame CSV (sequential): "
+					  << frame_csv_path(output, sequential.name) << '\n';
+			for (const ModelConfig* config : selected) {
+				if (config->model != execution_model::sequential)
+					std::cout << "Frame CSV (" << config->name << "): "
+							  << frame_csv_path(output, config->name) << '\n';
+			}
 		}
 		return 0;
 	} catch (const std::exception& error) {

@@ -6,9 +6,9 @@ están dentro de esta carpeta; el benchmark reutiliza la interfaz de métricas
 compartida en `../shared`.
 
 `include/core/config/raytracing_config.hpp` centraliza la geometría y los colores
-de la escena, la cámara, la resolución y los parámetros de ejecución. El benchmark usa
-`Timer` para medir cada frame en milisegundos y convierte las muestras a segundos
-antes de entregarlas a la interfaz común de métricas.
+de la escena, la cámara, la resolución y los parámetros de ejecución. El benchmark
+usa `Timer` para medir cada frame en milisegundos y convierte las muestras a
+segundos antes de calcular las métricas.
 
 ## Requisitos
 
@@ -73,10 +73,10 @@ cmake --build --preset msys2-mingw64 --parallel
 | Nombre | Comportamiento |
 | --- | --- |
 | `sequential` | Un worker procesa los píxeles en orden. Es el baseline. |
-| `fgmt` | Cuatro contextos comparten un pipeline; el turno rota entre contextos. |
-| `cgmt` | Cuatro contextos comparten un pipeline; el scheduler cede el turno al detectar un stall. |
+| `fgmt` | Cuatro contextos predeterminados comparten un pipeline; el turno rota entre contextos. |
+| `cgmt` | Cuatro contextos predeterminados comparten un pipeline; el scheduler cede el turno al detectar un stall. |
 | `smt` | Simula emisión de ancho 2 con `max(1, hardware_concurrency()) × 2` contextos virtuales, limitados al total de píxeles; no crea OS threads. |
-| `cmp` | Cuatro workers con threads del sistema operativo y trabajo dividido por core. |
+| `cmp` | Cuatro workers predeterminados con threads del sistema operativo y trabajo dividido por core. |
 
 FGMT y CGMT simulan un pipeline compartido. SMT sobre-suscribe los contextos
 virtuales según los procesadores lógicos detectados y un factor fijo de 2; no
@@ -84,11 +84,21 @@ lanza threads del sistema operativo. En el CSV, `n_workers` para SMT representa
 ese número de contextos virtuales, no hilos del sistema operativo. CMP usa
 paralelismo real del sistema operativo, por lo que sus tiempos de pared también
 incluyen diferencias de scheduler y creación/sincronización de threads.
+La opción `--workers N` permite configurar la cantidad de workers de FGMT,
+CGMT y CMP, y la cantidad de contextos virtuales de SMT. En los cuatro modelos
+el frame se divide en rangos contiguos y el último worker recibe los píxeles
+restantes. El modelo secuencial permanece con un solo worker para conservar el
+baseline. Si se omite la opción, cada modelo conserva su configuración
+predeterminada (SMT usa los procesadores lógicos detectados × 2).
+Al activar `--gif` junto con `--workers N`, los frames del GIF CMP también usan
+N workers.
 
 ## Benchmark
 
-Desde PowerShell, ejecuta los cinco esquemas con ray tracing, 200 repeticiones
-por esquema (el mínimo de referencia de la evaluación):
+Desde PowerShell, ejecuta los cinco esquemas con ray tracing y 200 repeticiones
+por modelo. De forma predeterminada escribe solo el CSV resumen y muestra una
+tabla compacta: no crea CSV individuales ni el GIF, y no imprime la traza del
+scheduler.
 
 ```powershell
 ./build-msys2/raytracing_benchmark.exe --model all --runs 200 --output data/benchmark_raytracing.csv
@@ -100,35 +110,101 @@ Opciones:
 | --- | --- | --- |
 | `--model` | `all` (predeterminado), `sequential`, `fgmt`, `cgmt`, `smt`, `cmp` | Ejecuta todos los modelos o uno. |
 | `--runs` | `200` | Número de repeticiones por modelo; debe ser positivo. |
+| `--workers N` | Configuración predeterminada de cada modelo | Cantidad de workers para FGMT, CGMT y CMP, y de contextos virtuales SMT. Debe estar entre 1 y el número de píxeles (38400). No cambia el modelo secuencial. |
 | `--output` | `data/benchmark.csv` | Ruta del CSV. Se crean los directorios necesarios. |
-| `--no-gif` | | Omite la generación predeterminada del GIF. |
+| `--frame-csv` | Desactivado | Genera un CSV de muestras por frame para cada modelo ejecutado. |
+| `--gif` | Desactivado | Genera el GIF orbital y sus frames intermedios. |
 | `--help`, `-h` | | Muestra el uso del programa. |
 
-El argumento `--output` nombra el CSV resumen. Además, se crea un CSV por
-modelo con una fila por frame medido; por ejemplo, para
-`data/benchmark_raytracing.csv` se generan
-`data/benchmark_raytracing_sequential_frames.csv`,
-`data/benchmark_raytracing_fgmt_frames.csv`,
-`data/benchmark_raytracing_cgmt_frames.csv`,
-`data/benchmark_raytracing_smt_frames.csv` y
-`data/benchmark_raytracing_cmp_frames.csv`. Si se solicita un solo modelo
-paralelo, también se genera el CSV secuencial usado como baseline.
+### Modos de ejecución del benchmark y archivos de salida
+
+**Resumen solamente (predeterminado):** crea el CSV agregado indicado por
+`--output`. Los datos de cada repetición se mantienen en memoria y no se
+escriben en CSV individuales.
+
+**Resumen y datos por frame:** agrega `--frame-csv`. Para una salida
+`data/benchmark_raytracing.csv` y `--model all`, se crean:
+
+```text
+data/benchmark_raytracing.csv
+data/benchmark_raytracing_sequential_frames.csv
+data/benchmark_raytracing_fgmt_frames.csv
+data/benchmark_raytracing_cgmt_frames.csv
+data/benchmark_raytracing_smt_frames.csv
+data/benchmark_raytracing_cmp_frames.csv
+```
+
+**Un solo modelo:** `--model cmp` (también acepta `sequential`, `fgmt`, `cgmt`
+o `smt`) limita las métricas del resumen y los CSV por frame al modelo elegido.
+Para calcular el speedup, también se ejecuta el baseline secuencial; con
+`--frame-csv` se guarda además `*_sequential_frames.csv`.
+
+Ejemplos:
+
+```powershell
+# Solo resumen de CMP, 200 frames (sin CSV por frame ni GIF)
+./build-msys2/raytracing_benchmark.exe --model cmp --runs 200 --output data/cmp.csv
+
+# Ejecutar todos los modelos paralelos con 8 workers/contextos (sequential conserva 1)
+./build-msys2/raytracing_benchmark.exe --model all --workers 8 --runs 200 --output data/all_8_workers.csv
+
+# Todos los modelos y CSV de cada frame; GIF desactivado
+./build-msys2/raytracing_benchmark.exe --model all --runs 200 --frame-csv --output data/all.csv
+
+# Activar también el GIF orbital
+./build-msys2/raytracing_benchmark.exe --model all --runs 200 --frame-csv --gif --output data/all_with_gif.csv
+
+# Guardar la salida normal de consola en un log; los errores siguen visibles
+./build-msys2/raytracing_benchmark.exe --model all --runs 200 --output data/all.csv > data/all.log
+```
+
+Para ocultar la tabla de estado pero conservar los CSV, redirige stdout a
+`$null`. Los errores de stderr seguirán apareciendo:
+
+```powershell
+./build-msys2/raytracing_benchmark.exe --model all --runs 200 --frame-csv --output data/all.csv > $null
+```
+
+El benchmark configura `set_verbose(0)`, así que no emite la traza detallada
+ciclo a ciclo. Su salida normal se limita al resumen en tabla y las rutas de los
+archivos generados.
 
 Cada CSV por modelo contiene el tiempo de pared del frame, el tiempo virtual,
-latencia virtual atribuida a stalls, cantidad de misses/stalls y cambios de
-contexto simulados. Secuencial y CMP pagan la latencia completa de miss
-(3200 ns por miss); FGMT cuenta un quantum desperdiciado (1000 ns por miss);
-CGMT registra el costo de cambio de contexto (400 ns por miss; la latencia del
-miss se considera oculta); SMT registra la latencia modelada (3200 ns por miss).
+latencia modelada de miss, tiempo virtual de cambio de contexto, cantidad de
+misses/stalls y cantidad de cambios de contexto. Ante cada miss, la latencia
+modelada es 3200 ns. La espera activa evita que la granularidad del temporizador
+del sistema operativo convierta pausas de microsegundos en pausas de milisegundos,
+pero ocupa CPU durante la espera. El tiempo observado puede superar la latencia
+nominal por el costo de detectar el miss y los cambios del sistema operativo.
+
+En CGMT, el worker espera los 3200 ns completos antes de reintentar el píxel,
+pero libera el slot después de los primeros 400 ns. Si hay otro worker activo,
+este puede ejecutar mientras el primero termina de esperar los 2800 ns restantes;
+si no lo hay, el worker conserva el slot y no se bloquea esperando a un worker
+terminado. Por eso:
+
+- `stall_time_ns` registra la latencia modelada completa (3200 ns por miss).
+- `context_switch_time_ns` registra el costo del scheduler CGMT (400 ns por
+  miss); ese valor también se agrega a `virtual_time_ns`.
+- El costo y la latencia son métricas distintas: el tiempo de pared del frame no
+  necesariamente aumenta 3200 ns por cada miss, porque la espera restante puede
+  solaparse con trabajo de otros workers.
+
+En FGMT cada miss espera los 3200 ns completos y el cambio de slot forma parte
+del scheduler por quantum (1000 ns virtuales). La simulación SMT es monohilo,
+por lo que la espera detiene el avance del simulador durante los 3200 ns. CMP y
+secuencial también esperan la penalización completa.
 Los cambios de contexto son transferencias entre contextos distintas dentro
-del scheduler simulado: FGMT al rotar a otro worker, CGMT al ceder/terminar un
-tile y SMT cuando un miss expulsa un contexto. Secuencial y CMP reportan cero,
+del scheduler simulado: FGMT al rotar a otro worker, CGMT al ceder por un miss o
+al terminar un tile y SMT cuando un miss expulsa un contexto. Secuencial y CMP reportan cero,
 porque no se instrumentan cambios del scheduler del sistema operativo.
 
-El CSV resumen se calcula a partir de las muestras de los CSV por modelo.
-Incluye media, desviación estándar muestral e intervalo de confianza normal
-aproximado del 95 % para el tiempo de ejecución y el tiempo virtual de stall,
-además de medias/desviaciones para cantidad de stalls y cambios de contexto.
+El CSV resumen se calcula a partir de todas las muestras de cada modelo (con
+`--frame-csv` también se exportan esas mismas muestras). Incluye media, desviación
+estándar muestral e intervalo de confianza normal
+aproximado del 95 % para tiempo de ejecución, latencia de stalls y tiempo de
+cambio de contexto, además de medias/desviaciones para cantidad de stalls y
+cambios de contexto.
 El speedup usa la razón entre el promedio secuencial y el promedio del modelo;
 su intervalo del 95 % usa propagación de error para dos medias independientes.
 La eficiencia es `speedup / n_workers`. `virtual_speedup` compara los tiempos
@@ -139,43 +215,50 @@ Al elegir un único modelo paralelo, también se ejecuta la campaña secuencial
 completa para construir el baseline, aunque solo se incluya el modelo elegido
 en el CSV resumen.
 
-Al terminar, el benchmark crea `data/camera_orbit.gif`: 72 frames de la
+Con `--gif`, el benchmark crea `data/camera_orbit.gif`: 72 frames de la
 cámara orbitando en sentido horario sobre un círculo de radio 8 en el plano XZ,
-alrededor del centro de la escena. Los
-frames PPM intermedios quedan en `data/camera_orbit_frames/`; la animación se
-genera después de las mediciones y no afecta sus tiempos. Usa `--no-gif` para
-omitir este paso. El GIF usa el modelo CMP.
+alrededor del centro de la escena. Los frames PPM intermedios quedan en
+`data/camera_orbit_frames/`; la animación se genera después de las mediciones y
+no afecta sus tiempos. Sin `--gif`, no se crean el GIF ni esos frames. El GIF
+usa el modelo CMP.
 
 Los nombres de salida son relativos al directorio de trabajo desde el que se
 ejecuta el programa.
 
-Para repetir la verificación secuencial y guardar sus resultados en `data/`:
+Para medir solo el baseline secuencial y guardar su resumen:
 
 ```powershell
 ./build-msys2/raytracing_benchmark.exe --model sequential --runs 200 --output data/sequential_raytracing.csv
-./build-msys2/raytracing_visual.exe --model sequential --output data/sequential_raytracing.ppm
 ```
 
 ## Renderizar modelos
 
-`raytracing_visual` ejecuta los cinco modelos por defecto, guarda un PPM por
-modelo y genera el GIF de órbita de cámara descrito arriba. No abre una ventana;
-usa un visor compatible con PPM para ver las imágenes.
+`raytracing_visual` ejecuta los cinco modelos por defecto y guarda un PPM por
+modelo. No abre una ventana; usa un visor compatible con PPM para ver las
+imágenes. La generación del GIF está desactivada salvo que se indique `--gif`.
 
 ```powershell
 ./build-msys2/raytracing_visual.exe
 ```
 
-Cada salida recibe el nombre `data/frame_<modelo>.ppm`. Se puede ejecutar un
-solo modelo y elegir su archivo de salida:
+Cada salida recibe el nombre `data/frame_<modelo>.ppm`. Con `--model all`,
+`--output` sirve como nombre base y se añade el nombre de cada modelo. Se puede
+ejecutar un solo modelo y elegir la ruta exacta del PPM:
 
 ```powershell
-./build-msys2/raytracing_visual.exe --model cmp --output data/frame_cmp.ppm --no-gif
+./build-msys2/raytracing_visual.exe --model cmp --output data/frame_cmp.ppm
+
+# Renderizar todos los modelos paralelos con 8 workers/contextos
+./build-msys2/raytracing_visual.exe --model all --workers 8
+
+# Activar el GIF orbital
+./build-msys2/raytracing_visual.exe --model all --gif
 ```
 
-`--model` acepta `all`, `sequential`, `fgmt`, `cgmt`, `smt` o `cmp`. Con
-`--model all`, `--output` se usa como prefijo para generar un archivo por modelo.
-`--no-gif` omite el GIF y `--help` muestra el uso del programa.
+`--model` acepta `all`, `sequential`, `fgmt`, `cgmt`, `smt` o `cmp`.
+`--gif` genera el GIF y sus frames intermedios; si no se pasa, no se generan.
+`--help` muestra el uso del programa. Para ocultar los mensajes normales de consola sin ocultar errores,
+agrega `> $null` al comando en PowerShell.
 
 Todos los CSV, PPM, GIF y frames intermedios se guardan en `data/`; los artefactos
 de compilación permanecen en `build-msys2/`.

@@ -21,10 +21,10 @@
 //
 // Mecanismo (idéntico al código de referencia en C):
 //   - current_thread_ indica qué thread tiene el pipeline.
-//   - En STALL: el thread CEDE el slot INMEDIATAMENTE al siguiente ready.
-//        → stats: 0 ns de VT (stall completamente oculto).
-//        → el pixel NO avanza; se reintentará cuando recupere el slot.
-//        → el otro thread usa el slot → ningún ciclo desperdiciado.
+//   - En STALL: paga 400 ns de cambio de contexto y cede el slot.
+//        → la latencia del miss (3200 ns) queda pendiente para ese worker.
+//        → otro worker ejecuta después del costo de cambio.
+//        → el pixel NO avanza y se reintenta cuando venza la latencia.
 //   - En COMPUTE: se renderiza el pixel, se avanza, sin cambio de contexto.
 //        → stats: +PIXEL_QUANTUM_NS
 //   - Al terminar el tile: switch_to_next_thread() sin coste extra.
@@ -45,6 +45,7 @@ private:
     std::vector<Task> tasks;
     
     // Variables de scheduler CGMT
+    const int worker_count;
     std::mutex sched_mutex;
     std::condition_variable sched_cv;
     int current_thread;                // Thread que tiene asignado el pipeline
@@ -56,7 +57,7 @@ private:
     long long virtual_time_ns_ = 0LL;
 
     // switch_to_next_thread(): Scheduler hardware CGMT.
-    // Busca el siguiente thread activo (round-robin, saltando los terminados).
+    // Busca el siguiente thread activo; si es el único, conserva el slot.
     // Debe llamarse mientras se sostiene sched_mutex.
     /** @brief Rota el slot al siguiente tile pendiente bajo sched_mutex. */
     void switch_to_next_thread();
@@ -64,8 +65,8 @@ private:
     void render_worker(int thread_id);
 
 public:
-    /** @brief Divide el frame entre NUM_THREADS e inicializa el scheduler. */
-    CoarseRenderer();
+    /** @param workers Cantidad de workers CGMT, entre 1 y la cantidad de píxeles. */
+    explicit CoarseRenderer(int workers = constants::NUM_THREADS);
 
     // Habilita la traza del scheduler para los primeros `cycles` ciclos de pipeline.
     /** @param cycles Cantidad de ciclos iniciales que se registran. */
@@ -91,6 +92,12 @@ public:
     long long get_stall_time_ns() const override {
         long long total = 0LL;
         for (const auto& ts : thread_stats) total += ts.stall_time_ns;
+        return total;
+    }
+    /** @return Suma de costos de cambio de contexto inducidos por misses. */
+    long long get_context_switch_time_ns() const override {
+        long long total = 0LL;
+        for (const auto& ts : thread_stats) total += ts.context_switch_time_ns;
         return total;
     }
     /** @return Transferencias reales entre contextos simulados. */

@@ -14,6 +14,7 @@
 #include <atomic>
 #include <condition_variable>
 #include <mutex>
+#include <memory>
 
 /** @brief Semáforo binario con mutex y condition_variable para turnos FGMT. */
 class CountingSemaphore {
@@ -48,7 +49,7 @@ private:
 
 // FinegrainedRenderer: modelo FGMT (Fine-Grained Multithreading).
 //
-// Simula 1 pipeline con NUM_THREADS contextos de hardware.
+// Simula 1 pipeline con un número configurable de contextos de hardware.
 // Scheduler: semáforo por thread — cada thread espera en su propio
 // sem_wait() y, al terminar su ciclo, señala directamente al siguiente
 // thread con píxeles pendientes (skip de IDLE).
@@ -81,11 +82,12 @@ private:
     // Scheduler FGMT: semáforo por thread para señalización punto a punto.
     // slots_[i]: thread i espera aquí su turno de pipeline.
     // tile_done_[i]: true cuando thread i terminó todos sus píxeles.
-    // threads_completed_: contador atómico; al llegar a NUM_THREADS el
+    // threads_completed_: contador atómico; al llegar a worker_count_ el
     //   último thread hace broadcast para desbloquear los demás.
-    CountingSemaphore        slots_[constants::NUM_THREADS];
+    const int                worker_count_;
+    std::vector<CountingSemaphore> slots_;
     std::atomic<int>         threads_completed_{0};
-    std::atomic<bool>        tile_done_[constants::NUM_THREADS];
+    std::unique_ptr<std::atomic<bool>[]> tile_done_;
     // global_cycle_: cuenta cuántos slots de pipeline se han despachado.
     // Incrementado atómicamente por el thread activo al tomar el semáforo.
     // Serializado de facto por el protocolo de semáforos (un thread activo).
@@ -96,17 +98,16 @@ private:
     void render_tile_worker(int thread_id);
 
 public:
-    // Divide los índices row-major en NUM_THREADS rangos contiguos; el último
-    // rango recibe cualquier residuo. Con 240x160 y cuatro workers son bandas
-    // horizontales de 40 filas. Cada worker usa una semilla de caché propia.
-    /** @brief Divide el frame en rangos contiguos e inicializa cachés deterministas. */
-    FinegrainedRenderer();
+    // Divide los índices row-major en rangos contiguos; el último recibe residuos.
+    // Cada worker usa una semilla de caché propia.
+    /** @param workers Cantidad de workers FGMT, entre 1 y la cantidad de píxeles. */
+    explicit FinegrainedRenderer(int workers = constants::NUM_THREADS);
 
     // Habilita la traza del scheduler para los primeros `cycles` ciclos de pipeline.
     /** @param cycles Cantidad de ciclos iniciales que se registran. */
     void set_verbose(int cycles) override { logger_.set_max_cycles(cycles); }
 
-    // render_frame(): resetea estado, lanza NUM_THREADS threads (uno por tile) y
+    // render_frame(): resetea estado, lanza worker_count_ threads (uno por tile) y
     // espera a que todos terminen. VT = suma de VTs por thread (pipeline compartido).
     /** @return Frame completo después de que todos los workers terminen. */
     std::vector<Vector3> render_frame() override;

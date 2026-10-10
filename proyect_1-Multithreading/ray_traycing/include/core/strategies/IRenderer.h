@@ -40,6 +40,9 @@ public:
     /** @return Latencia virtual atribuida a stalls del último frame, en ns. */
     virtual long long get_stall_time_ns() const { return 0LL; }
 
+    /** @return Costo virtual de cambio de contexto del último frame, en ns. */
+    virtual long long get_context_switch_time_ns() const { return 0LL; }
+
     /** @return Cambios de contexto simulados durante el último frame. */
     virtual int get_context_switches() const { return 0; }
 

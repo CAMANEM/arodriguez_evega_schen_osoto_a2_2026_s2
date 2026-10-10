@@ -34,6 +34,7 @@
  */
 class CMPRenderer : public IRenderer {
 private:
+    const int worker_count_;
     std::vector<Vector3>              frame_;
     std::vector<CacheModel>           cache_models_;
     std::vector<trace::ThreadMetrics> core_stats_;
@@ -56,18 +57,17 @@ private:
     void render_core_worker(int core_id);
 
 public:
-    // Constructor: divide el frame en CMP_NUM_CORES strips horizontales iguales.
-    // Cada core recibe IMAGE_WIDTH * IMAGE_HEIGHT / CMP_NUM_CORES píxeles.
+    // Divide el frame en rangos contiguos; el último recibe los píxeles residuales.
     // CacheModel semilla determinista: base 42 + core_id → reproducibilidad.
-    /** @brief Divide el frame en CMP_NUM_CORES tiles independientes. */
-    CMPRenderer();
+    /** @param workers Cantidad de workers CMP, entre 1 y la cantidad de píxeles. */
+    explicit CMPRenderer(int workers = constants::CMP_NUM_CORES);
 
     // Habilita la traza del scheduler para los primeros `cycles` ciclos de pipeline.
     // En CMP los núcleos corren en paralelo real: las líneas de log pueden intercalarse.
     /** @param cycles Cantidad de ciclos locales iniciales que se registran. */
     void set_verbose(int cycles) override { logger_.set_max_cycles(cycles); }
 
-    // render_frame(): lanza CMP_NUM_CORES OS threads, espera a que todos terminen
+    // render_frame(): lanza un OS thread por worker y espera a que terminen
     // y retorna el frame completo.
     // VT = max(per-core VT): los cores corren en paralelo real.
     /** @return Frame completo cuando todos los workers terminan. */

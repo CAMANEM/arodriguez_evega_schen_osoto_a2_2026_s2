@@ -4,6 +4,7 @@
  */
 #include "core/strategies/SequentialRenderer.h"
 #include "core/config/raytracing_config.hpp"
+#include "core/utils/RendererUtils.h"
 
 using namespace constants;
 
@@ -48,6 +49,7 @@ std::vector<Vector3> SequentialRenderer::render_frame() {
                 stall_time_ns_ += CACHE_MISS_PENALTY_NS;
                 ++stall_count_;
                 logger_.log_stall(cycle, 0, x, y, CACHE_MISS_PENALTY_NS, "no ctx switch");
+                trace::wait_for_stall_wall_time(CACHE_MISS_PENALTY_NS);
             }
 
             ++cycle;

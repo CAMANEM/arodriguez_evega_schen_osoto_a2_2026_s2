@@ -70,7 +70,7 @@ inline const std::string CSV_FILE_CGMT = "data/mediciones_cgmt.csv";
 inline const std::string CSV_FILE_SMT = "data/mediciones_smt.csv";
 inline const std::string CSV_FILE_CMP = "data/mediciones_cmp.csv";
 
-/** @brief Cantidad fija de contextos de los modelos FGMT y CGMT. */
+/** @brief Cantidad predeterminada de contextos FGMT y CGMT. */
 inline constexpr int NUM_THREADS = 4;
 /** @brief Tamaño de caché simulado por contexto, en bytes. */
 inline constexpr int CACHE_SIZE = 256;
@@ -89,7 +89,7 @@ inline constexpr long long CONTEXT_SWITCH_COST_NS = 400LL;
 inline constexpr unsigned int SMT_OVERSUBSCRIPTION_FACTOR = 2;
 /** @brief Slots que puede emitir el simulador SMT en un ciclo. */
 inline constexpr int SMT_ISSUE_WIDTH = 2;
-/** @brief Cantidad de workers reales usada por el modelo CMP. */
+/** @brief Cantidad predeterminada de workers reales usada por CMP. */
 inline constexpr int CMP_NUM_CORES = 4;
 
 /**

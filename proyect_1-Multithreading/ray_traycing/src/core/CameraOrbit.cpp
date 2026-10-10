@@ -20,10 +20,10 @@
  * @brief Renderiza la órbita horaria con CMP y delega el GIF a Pillow.
  * @throws std::runtime_error Si falla el proceso Python de ensamblado.
  */
-void render_camera_orbit_gif() {
+void render_camera_orbit_gif(int workers) {
     const std::filesystem::path frames_directory = constants::CAMERA_ORBIT_FRAMES_DIR;
     std::filesystem::create_directories(frames_directory);
-    std::unique_ptr<IRenderer> renderer = RendererFactory::create("cmp");
+    std::unique_ptr<IRenderer> renderer = RendererFactory::create("cmp", workers);
 
     const double full_rotation = 2.0 * std::acos(-1.0);
     for (int frame_index = 0; frame_index < constants::CAMERA_ORBIT_FRAME_COUNT; ++frame_index) {

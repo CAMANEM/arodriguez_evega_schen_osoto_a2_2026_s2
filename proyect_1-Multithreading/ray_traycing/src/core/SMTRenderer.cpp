@@ -11,11 +11,12 @@ using namespace constants;
 using namespace trace;
 
 /** @brief Crea los contextos SMT y divide el frame entre sus rangos. */
-SMTRenderer::SMTRenderer()
-    : frame_(IMAGE_WIDTH * IMAGE_HEIGHT), global_clock_(0)
+SMTRenderer::SMTRenderer(int contexts)
+    : worker_count_(validated_worker_count(contexts, IMAGE_WIDTH * IMAGE_HEIGHT)),
+      frame_(IMAGE_WIDTH * IMAGE_HEIGHT), global_clock_(0)
 {
     const int total      = IMAGE_WIDTH * IMAGE_HEIGHT;
-    const int context_count = smt_context_count();
+    const int context_count = worker_count_;
     const int per_thread = total / context_count;
 
     tasks_.resize(context_count);
@@ -121,6 +122,7 @@ std::vector<Vector3> SMTRenderer::render_frame() {
                 stall_countdown_[tid] = CACHE_MISS_PENALTY_NS / PIXEL_QUANTUM_NS;
                 pending_stall_[tid] = true;
                 logger_.log_stall(global_clock_, tid, x, y, 0LL, "miss→ejected");
+                wait_for_stall_wall_time(CACHE_MISS_PENALTY_NS);
             } else {
                 // HIT (o dato ya en cache tras stall): slot ocupado productivamente.
                 frame_[px] = pixel_kernel_.compute(x, y);
