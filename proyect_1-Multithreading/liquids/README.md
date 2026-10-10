@@ -23,6 +23,9 @@ pipeline so its stage timings can be compared directly.
   workers, configurable quanta, and round-robin scheduling for every
   computational stage. It intentionally does not create operating-system
   threads; real-thread strategies belong to later SMT/CMP implementations.
+- `strategies/coarse_grained`: cooperative coarse-grained execution using
+  statically partitioned virtual workers, large chunks, and deterministic
+  stall/yield events.
 - `SphFluid`: deterministic dam-break style initialization using a regular
   particle lattice.
 - `SphForces`: normalized Poly6, Spiky-gradient, and viscosity kernels, with

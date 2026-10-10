@@ -18,6 +18,7 @@ add_library(liquids_core STATIC
     src/core/SphForces.cpp
     src/core/SequentialSphScheme.cpp
     src/strategies/fine_grained/FineGrainedSphScheme.cpp
+    src/strategies/coarse_grained/CoarseGrainedSphScheme.cpp
     ../shared/src/metrics_interface.cpp
 )
 
