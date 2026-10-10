@@ -26,6 +26,10 @@ pipeline so its stage timings can be compared directly.
 - `strategies/coarse_grained`: cooperative coarse-grained execution using
   statically partitioned virtual workers, large chunks, and deterministic
   stall/yield events.
+- `strategies/smt`: real `std::thread` execution with configurable
+  oversubscription (`L * factor`).
+- `strategies/cmp`: real `std::thread` execution with one worker per logical
+  processor reported by the operating system (`L`).
 - `SphFluid`: deterministic dam-break style initialization using a regular
   particle lattice.
 - `SphForces`: normalized Poly6, Spiky-gradient, and viscosity kernels, with
@@ -34,6 +38,11 @@ pipeline so its stage timings can be compared directly.
 The benchmark-only settings `iterations_per_config`, `profiling_tool`, and
 `hardware_smt_enabled` are intentionally not part of `SphConfig`. They belong
 to the future benchmark and experiment metadata layer.
+
+SMT strategy selection does not toggle hardware SMT. The strategy controls
+software oversubscription; the hardware SMT/Hyper-Threading state must be
+recorded and changed externally through BIOS/UEFI or the Linux system
+interface during the benchmark campaign.
 
 ## Build
 
@@ -44,8 +53,8 @@ ctest --test-dir build/liquids --output-on-failure
 ```
 
 The test checks the object and metrics contracts, deterministic initialization,
-stability limits, boundary bounds, and equivalence between sequential and
-fine-grained execution. The neighbor search is a distinct stage. The returned
-`SphRunMetrics` contains wall time and execution count for every stage, so
-benchmarks can report each phase without mixing neighbor-search overhead into
-density.
+stability limits, boundary bounds, and equivalence between sequential,
+fine-grained, coarse-grained, SMT, and CMP execution. The neighbor search is a
+distinct stage. The returned `SphRunMetrics` contains wall time and execution
+count for every stage, so benchmarks can report each phase without mixing
+neighbor-search overhead into density.
