@@ -18,7 +18,31 @@ double densityKernel(double squaredDistanceValue, double smoothingLength) {
         return 0.0;
     }
     const double difference = h2 - squaredDistanceValue;
-    return difference * difference * difference;
+    constexpr double pi = 3.14159265358979323846;
+    const double coefficient =
+        315.0 / (64.0 * pi * std::pow(smoothingLength, 9.0));
+    return coefficient * difference * difference * difference;
+}
+
+double spikyGradientFactor(double distance, double smoothingLength) {
+    if (distance <= 1e-12 || distance >= smoothingLength) {
+        return 0.0;
+    }
+    constexpr double pi = 3.14159265358979323846;
+    const double coefficient =
+        -45.0 / (pi * std::pow(smoothingLength, 6.0));
+    const double difference = smoothingLength - distance;
+    return coefficient * difference * difference;
+}
+
+double viscosityLaplacian(double distance, double smoothingLength) {
+    if (distance >= smoothingLength) {
+        return 0.0;
+    }
+    constexpr double pi = 3.14159265358979323846;
+    const double coefficient =
+        45.0 / (pi * std::pow(smoothingLength, 6.0));
+    return coefficient * (smoothingLength - distance);
 }
 
 } // namespace
@@ -53,7 +77,8 @@ double SphForces::computeDensityForParticle(int particleIndex,
         density += computeDensityContribution(particleIndex, neighborIndex,
                                               fluid, config);
     }
-    return std::max(density, 1e-12);
+    return std::max(
+        density, config.getRestDensity() * config.getMinDensityRatio());
 }
 
 double SphForces::computeDensityContribution(int particleIndex,
@@ -80,9 +105,11 @@ void SphForces::computeAllDensities(SphFluid& fluid, const SphConfig& config,
 void SphForces::computeAllPressures(SphFluid& fluid, const SphConfig& config) {
     for (int index = 0; index < fluid.getParticleCount(); ++index) {
         SphParticle& particle = fluid.getParticle(index);
-        particle.setPressure(
+        const double rawPressure =
             config.getGasStiffness() *
-            (particle.getDensity() - config.getRestDensity()));
+            (particle.getDensity() - config.getRestDensity());
+        particle.setPressure(std::clamp(rawPressure, -config.getMaxPressure(),
+                                         config.getMaxPressure()));
     }
 }
 
@@ -113,20 +140,30 @@ std::vector<SphForceData> SphForces::computeAllForces(
             }
 
             const double inverseDistance = 1.0 / distance;
+            const double densityFloor =
+                config.getRestDensity() * config.getMinDensityRatio();
+            const double neighborDensity =
+                std::max(neighbor.getDensity(), densityFloor);
+
             const double pressureTerm =
                 -config.getParticleMass() *
                 (particle.getPressure() + neighbor.getPressure()) /
-                (2.0 * neighbor.getDensity()) *
-                (config.getSmoothingLength() - distance) * inverseDistance;
+                (2.0 * neighborDensity);
+            const double gradientFactor =
+                spikyGradientFactor(distance, config.getSmoothingLength());
             const double viscosityTerm =
                 config.getViscosity() * config.getParticleMass() /
-                neighbor.getDensity();
-            force.forceX += (pressureTerm * dx) +
-                            viscosityTerm *
-                                (neighbor.get_speed_x() - particle.get_speed_x());
-            force.forceY += (pressureTerm * dy) +
-                            viscosityTerm *
-                                (neighbor.get_speed_y() - particle.get_speed_y());
+                neighborDensity;
+            const double laplacian =
+                viscosityLaplacian(distance, config.getSmoothingLength());
+            force.forceX += pressureTerm * gradientFactor * dx * inverseDistance;
+            force.forceY += pressureTerm * gradientFactor * dy * inverseDistance;
+            force.forceX += viscosityTerm * (neighbor.get_speed_x() -
+                                             particle.get_speed_x()) *
+                            laplacian;
+            force.forceY += viscosityTerm * (neighbor.get_speed_y() -
+                                             particle.get_speed_y()) *
+                            laplacian;
         }
         forces[static_cast<std::size_t>(index)] = force;
     }
@@ -141,5 +178,47 @@ void SphForces::applyForcesAndIntegrate(
         SphParticle& particle = fluid.getParticle(index);
         particle.set_force(force.forceX, force.forceY);
         particle.update(config.getDeltaTime());
+
+        const double speedSquared =
+            particle.get_speed_x() * particle.get_speed_x() +
+            particle.get_speed_y() * particle.get_speed_y();
+        const double maxSpeedSquared =
+            config.getMaxSpeed() * config.getMaxSpeed();
+        if (speedSquared > maxSpeedSquared) {
+            const double scale =
+                config.getMaxSpeed() / std::sqrt(speedSquared);
+            particle.set_velocity(particle.get_speed_x() * scale,
+                                  particle.get_speed_y() * scale);
+        }
+    }
+}
+
+void SphForces::applyBoundary(SphFluid& fluid, const SphConfig& config) {
+    for (int index = 0; index < fluid.getParticleCount(); ++index) {
+        SphParticle& particle = fluid.getParticle(index);
+        if (particle.get_pos_x() < 0.0) {
+            particle.set_position(0.0, particle.get_pos_y());
+            particle.set_velocity(particle.get_speed_x() *
+                                      config.getBoundaryDamping(),
+                                  particle.get_speed_y());
+        } else if (particle.get_pos_x() > config.getDomainWidth()) {
+            particle.set_position(config.getDomainWidth(),
+                                  particle.get_pos_y());
+            particle.set_velocity(particle.get_speed_x() *
+                                      config.getBoundaryDamping(),
+                                  particle.get_speed_y());
+        }
+        if (particle.get_pos_y() < 0.0) {
+            particle.set_position(particle.get_pos_x(), 0.0);
+            particle.set_velocity(particle.get_speed_x(),
+                                  particle.get_speed_y() *
+                                      config.getBoundaryDamping());
+        } else if (particle.get_pos_y() > config.getDomainHeight()) {
+            particle.set_position(particle.get_pos_x(),
+                                  config.getDomainHeight());
+            particle.set_velocity(particle.get_speed_x(),
+                                  particle.get_speed_y() *
+                                      config.getBoundaryDamping());
+        }
     }
 }

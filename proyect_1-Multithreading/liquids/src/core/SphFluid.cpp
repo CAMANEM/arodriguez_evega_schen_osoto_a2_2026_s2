@@ -1,16 +1,24 @@
 #include "core/SphFluid.hpp"
 
-#include <random>
+#include <algorithm>
+#include <cmath>
 
 SphFluid::SphFluid(const SphConfig& config) {
-    std::mt19937 generator(config.getSeed());
-    std::uniform_real_distribution<double> xDistribution(0.0, config.getDomainWidth());
-    std::uniform_real_distribution<double> yDistribution(0.0, config.getDomainHeight());
-
     particles_.reserve(static_cast<std::size_t>(config.getParticleCount()));
+    const double spacing = config.getSmoothingLength() * 0.5;
+    const int columns = std::max(
+        1, static_cast<int>((config.getDomainWidth() * 0.25) / spacing));
+    const double startX = spacing;
+    const double startY = spacing;
+
     for (int id = 0; id < config.getParticleCount(); ++id) {
+        const int row = id / columns;
+        const int column = id % columns;
+        const double x = startX + static_cast<double>(column) * spacing;
+        const double y = startY + static_cast<double>(row) * spacing;
         particles_.emplace_back(id, config.getParticleMass(),
-                                xDistribution(generator), yDistribution(generator));
+                                std::min(x, config.getDomainWidth()),
+                                std::min(y, config.getDomainHeight()));
     }
 }
 

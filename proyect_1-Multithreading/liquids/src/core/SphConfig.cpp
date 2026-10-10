@@ -7,7 +7,9 @@ SphConfig::SphConfig(int particleCount, int timeSteps, double smoothingLength,
                      double gasStiffness, double viscosity, double gravity,
                      double domainWidth, double domainHeight,
                      execution_model executionModel, int threadCount,
-                     unsigned int seed)
+                     unsigned int seed, double boundaryDamping,
+                     double minDensityRatio, double maxPressure,
+                     double maxSpeed)
     : particleCount_(particleCount),
       timeSteps_(timeSteps),
       smoothingLength_(smoothingLength),
@@ -21,11 +23,17 @@ SphConfig::SphConfig(int particleCount, int timeSteps, double smoothingLength,
       domainHeight_(domainHeight),
       executionModel_(executionModel),
       threadCount_(threadCount),
-      seed_(seed) {
+      seed_(seed),
+      boundaryDamping_(boundaryDamping),
+      minDensityRatio_(minDensityRatio),
+      maxPressure_(maxPressure),
+      maxSpeed_(maxSpeed) {
     if (particleCount_ <= 0 || timeSteps_ <= 0 || threadCount_ <= 0 ||
         smoothingLength_ <= 0.0 || deltaTime_ <= 0.0 || particleMass_ <= 0.0 ||
         restDensity_ <= 0.0 || gasStiffness_ < 0.0 || viscosity_ < 0.0 ||
-        domainWidth_ <= 0.0 || domainHeight_ <= 0.0) {
+        domainWidth_ <= 0.0 || domainHeight_ <= 0.0 ||
+        boundaryDamping_ > 0.0 || boundaryDamping_ < -1.0 ||
+        minDensityRatio_ <= 0.0 || maxPressure_ < 0.0 || maxSpeed_ <= 0.0) {
         throw std::invalid_argument("Invalid SPH configuration");
     }
 }
@@ -44,3 +52,7 @@ double SphConfig::getDomainHeight() const { return domainHeight_; }
 execution_model SphConfig::getExecutionModel() const { return executionModel_; }
 int SphConfig::getThreadCount() const { return threadCount_; }
 unsigned int SphConfig::getSeed() const { return seed_; }
+double SphConfig::getBoundaryDamping() const { return boundaryDamping_; }
+double SphConfig::getMinDensityRatio() const { return minDensityRatio_; }
+double SphConfig::getMaxPressure() const { return maxPressure_; }
+double SphConfig::getMaxSpeed() const { return maxSpeed_; }

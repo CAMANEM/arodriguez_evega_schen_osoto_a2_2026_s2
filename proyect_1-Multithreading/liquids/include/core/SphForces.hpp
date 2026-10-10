@@ -34,6 +34,7 @@ public:
     static void applyForcesAndIntegrate(SphFluid& fluid,
                                         const SphConfig& config,
                                         const std::vector<SphForceData>& forces);
+    static void applyBoundary(SphFluid& fluid, const SphConfig& config);
 };
 
 #endif

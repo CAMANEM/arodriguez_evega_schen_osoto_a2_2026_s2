@@ -18,7 +18,11 @@ public:
               double domainHeight = 1.0,
               execution_model executionModel = execution_model::sequential,
               int threadCount = 1,
-              unsigned int seed = 42);
+              unsigned int seed = 42,
+              double boundaryDamping = -0.35,
+              double minDensityRatio = 0.2,
+              double maxPressure = 2.0e6,
+              double maxSpeed = 25.0);
 
     int getParticleCount() const;
     int getTimeSteps() const;
@@ -34,6 +38,10 @@ public:
     execution_model getExecutionModel() const;
     int getThreadCount() const;
     unsigned int getSeed() const;
+    double getBoundaryDamping() const;
+    double getMinDensityRatio() const;
+    double getMaxPressure() const;
+    double getMaxSpeed() const;
 
 private:
     int particleCount_;
@@ -50,6 +58,10 @@ private:
     execution_model executionModel_;
     int threadCount_;
     unsigned int seed_;
+    double boundaryDamping_;
+    double minDensityRatio_;
+    double maxPressure_;
+    double maxSpeed_;
 };
 
 #endif

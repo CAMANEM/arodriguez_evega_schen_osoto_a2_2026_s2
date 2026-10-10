@@ -19,6 +19,7 @@ SphMetrics SequentialSphScheme::simulateStep(SphFluid& fluid,
     const std::vector<SphForceData> forces =
         SphForces::computeAllForces(fluid, config, neighbors);
     SphForces::applyForcesAndIntegrate(fluid, config, forces);
+    SphForces::applyBoundary(fluid, config);
     const double elapsedSeconds = std::chrono::duration<double>(
         densityEnd - densityStart).count();
     return SphMetrics(getExecutionModel(), getSchemeName(), 1,
