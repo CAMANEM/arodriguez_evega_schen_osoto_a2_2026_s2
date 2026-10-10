@@ -6,6 +6,7 @@
 #include "core/SphConfig.hpp"
 #include "core/SphFluid.hpp"
 #include "core/SphMetrics.hpp"
+#include "core/SphStageRunner.hpp"
 
 class SphScheme {
 public:
