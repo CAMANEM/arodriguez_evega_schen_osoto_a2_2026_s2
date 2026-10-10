@@ -18,7 +18,7 @@ public:
     const std::vector<SphStageMetrics>& stageMetrics() const override;
     const SphRunMetrics& runMetrics() const override;
 
-    SphMetrics simulate(SphFluid& fluid, const SphConfig& config);
+    SphMetrics simulate(SphFluid& fluid, const SphConfig& config) override;
     SphMetrics simulateStep(SphFluid& fluid,
                             const SphConfig& config) override;
 

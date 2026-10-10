@@ -12,7 +12,7 @@ class SphScheme {
 public:
     virtual ~SphScheme() = default;
 
-    SphMetrics simulate(SphFluid& fluid, const SphConfig& config) {
+    virtual SphMetrics simulate(SphFluid& fluid, const SphConfig& config) {
         double measuredSeconds = 0.0;
         for (int step = 0; step < config.getTimeSteps(); ++step) {
             measuredSeconds += simulateStep(fluid, config).getMeasuredSeconds();

@@ -22,6 +22,8 @@ add_library(liquids_core STATIC
     src/strategies/threaded/ThreadedSphScheme.cpp
     src/strategies/smt/SmtSphScheme.cpp
     src/strategies/cmp/CmpSphScheme.cpp
+    src/cli/SphCli.cpp
+    src/cli/SphSchemeFactory.cpp
     ../shared/src/metrics_interface.cpp
 )
 
@@ -44,3 +46,6 @@ if(LIQUIDS_BUILD_TESTS)
     target_link_libraries(liquids_interface_tests PRIVATE liquids_core)
     add_test(NAME liquids_interface_tests COMMAND liquids_interface_tests)
 endif()
+
+add_executable(liquids_benchmark src/main_benchmark.cpp)
+target_link_libraries(liquids_benchmark PRIVATE liquids_core)
