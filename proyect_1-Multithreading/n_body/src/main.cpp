@@ -1,9 +1,11 @@
 #include "raylib.h"
 #include "../include/body.hpp"
+#include "../include/fine_grained.hpp"
 #include <vector>
 #include <cmath>
 #include <cstring>
 #include <cstdlib>
+#include <chrono>
 #include <iostream>
 
 /* ===== SIMULATION CONSTANTS ================================================================== */
@@ -24,7 +26,7 @@ static const Color PARTICLE_COLOR = {250, 250, 250, 255};
 
 /* ===== EXECUTION MODE ======================================================================== */
 
-enum class execution_mode { seq };
+enum class execution_mode { seq, fine };
 
 /* ===== SIMULATION CONFIG ===================================================================== */
 
@@ -51,6 +53,8 @@ static simulation_config parse_arguments(int argc, char** argv) {
             configuration_parameters.gui = false;
         } else if (strcmp(argv[i], "-seq") == 0) {
             configuration_parameters.mode = execution_mode::seq;
+        } else if (strcmp(argv[i], "-fine") == 0) {
+            configuration_parameters.mode = execution_mode::fine;
         }
     }
     return configuration_parameters;
@@ -58,17 +62,15 @@ static simulation_config parse_arguments(int argc, char** argv) {
 
 /* ===== SEQUENTIAL STEP ======================================================================= */
 
-// Computes pairwise gravitational forces (Newton's 3rd law) and updates all bodies.
-static void step_seq(std::vector<Body>& bodies, double dt, bool headless) {
+// Computes pairwise gravitational forces (Newton's 3rd law), updates all bodies, and returns elapsed time in milliseconds.
+static double step_seq(std::vector<Body>& bodies, double dt, bool headless) {
     int n = static_cast<int>(bodies.size());
     std::vector<double> fx(n, 0.0);
     std::vector<double> fy(n, 0.0);
 
+    auto start = std::chrono::high_resolution_clock::now();
+
     for (int i = 0; i < n; i++) {
-        if (headless) {
-            std::cout << "Main process - Body " << bodies[i].get_id()
-                      << " forces and position updating.\n";
-        }
         for (int j = i + 1; j < n; j++) {
             double dx = bodies[j].get_pos_x() - bodies[i].get_pos_x();
             double dy = bodies[j].get_pos_y() - bodies[i].get_pos_y();
@@ -89,6 +91,19 @@ static void step_seq(std::vector<Body>& bodies, double dt, bool headless) {
         bodies[i].set_force(fx[i], fy[i]);
         bodies[i].update(dt);
     }
+
+    auto end = std::chrono::high_resolution_clock::now();
+    double step_time_ms = std::chrono::duration<double, std::milli>(end - start).count();
+
+    if (headless) {
+        for (int i = 0; i < n; i++) {
+            std::cout << "Main process - Body " << bodies[i].get_id()
+                      << " forces and position updating.\n";
+        }
+        std::cout << "Step time: " << step_time_ms << " ms\n";
+    }
+
+    return step_time_ms;
 }
 
 /* ===== MAIN ================================================================================== */
@@ -109,10 +124,13 @@ int main(int argc, char** argv) {
     }
 
     double elapsed = 0.0;
+    double last_step_time_ms = 0.0;
     bool running = true;
 
     while (running) {
-        if (configuration_parameters.gui && WindowShouldClose()) break;
+        if (configuration_parameters.gui && WindowShouldClose()) {
+            break;
+        }
 
         double dt = configuration_parameters.gui
             ? static_cast<double>(GetFrameTime())
@@ -120,7 +138,10 @@ int main(int argc, char** argv) {
 
         switch (configuration_parameters.mode) {
             case execution_mode::seq:
-                step_seq(bodies, dt, !configuration_parameters.gui);
+                last_step_time_ms = step_seq(bodies, dt, !configuration_parameters.gui);
+                break;
+            case execution_mode::fine:
+                last_step_time_ms = step_fine(bodies, dt, !configuration_parameters.gui);
                 break;
         }
 
@@ -133,14 +154,18 @@ int main(int argc, char** argv) {
                            static_cast<float>(PARTICLE_R),
                            PARTICLE_COLOR);
             }
+            DrawText(TextFormat("Step: %.3f ms", last_step_time_ms), 10, 10, 20, RAYWHITE);
             EndDrawing();
         }
 
         elapsed += dt;
-        if (configuration_parameters.t > 0.0 && elapsed >= configuration_parameters.t)
+        if (configuration_parameters.t > 0.0 && elapsed >= configuration_parameters.t) {
             running = false;
+        }
     }
 
-    if (configuration_parameters.gui) CloseWindow();
+    if (configuration_parameters.gui) {
+        CloseWindow();
+    }
     return 0;
 }

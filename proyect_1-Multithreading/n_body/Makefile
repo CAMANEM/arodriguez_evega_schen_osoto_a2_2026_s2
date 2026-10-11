@@ -1,22 +1,22 @@
 # ===== CONFIGURATION ==========================================================================
 
-CXX      = g++
+CXX = g++
 CXXFLAGS = -std=c++17 -O2 -Wall
 
 # Adjust RAYLIB_PATH to your Raylib installation directory
 RAYLIB_PATH = C:/raylib/w64devkit
 
 INCLUDE_DIRS = -I./include -I../shared/include -I$(RAYLIB_PATH)/include
-LIB_DIRS     = -L$(RAYLIB_PATH)/lib
-LIBS         = -lraylib -lopengl32 -lgdi32 -lwinmm
+LIB_DIRS = -L$(RAYLIB_PATH)/lib
+LIBS = -lraylib -lopengl32 -lgdi32 -lwinmm
 
 # ===== FILE STRUCTURE =========================================================================
 
 SRC_DIR = src
 OBJ_DIR = obj
-BIN     = n_body
+BIN = n_body
 
-SRCS = $(SRC_DIR)/main.cpp $(SRC_DIR)/body.cpp
+SRCS = $(SRC_DIR)/main.cpp $(SRC_DIR)/body.cpp $(SRC_DIR)/fine_grained.cpp
 OBJS = $(patsubst $(SRC_DIR)/%.cpp, $(OBJ_DIR)/%.o, $(SRCS))
 
 # ===== TARGETS ================================================================================
