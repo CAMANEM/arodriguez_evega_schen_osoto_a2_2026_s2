@@ -47,7 +47,7 @@ void BodyContext::calculate(const std::vector<Body>& bodies) {
 }
 
 // L threads pass a token in a ring.
-double step_fine(std::vector<Body>& bodies, double dt, bool headless) {
+double step_fine(std::vector<Body>& bodies, double dt, bool headless, int thread_count) {
     int n = static_cast<int>(bodies.size());
 
     if (n == 0) {
@@ -62,7 +62,6 @@ double step_fine(std::vector<Body>& bodies, double dt, bool headless) {
         contexts.emplace_back(i, n);
     }
 
-    int thread_count = static_cast<int>(std::thread::hardware_concurrency());
     if (thread_count <= 0) {
         thread_count = 1;
     }

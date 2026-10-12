@@ -9,7 +9,7 @@
 #include <iostream>
 
 // L threads pass a token.
-double step_coarse(std::vector<Body>& bodies, double dt, bool headless) {
+double step_coarse(std::vector<Body>& bodies, double dt, bool headless, int thread_count) {
     int n = static_cast<int>(bodies.size());
 
     if (n == 0) {
@@ -24,7 +24,6 @@ double step_coarse(std::vector<Body>& bodies, double dt, bool headless) {
         contexts.emplace_back(i, n);
     }
 
-    int thread_count = static_cast<int>(std::thread::hardware_concurrency());
     if (thread_count <= 0) {
         thread_count = 1;
     }

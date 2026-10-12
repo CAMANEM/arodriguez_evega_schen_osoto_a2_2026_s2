@@ -10,7 +10,7 @@ constexpr double G = 1e5;
 constexpr double EPSILON = 50.0;
 
 // L threads all run in parallel; each computes forces for its assigned bodies.
-double step_cmp(std::vector<Body>& bodies, double dt, bool headless) {
+double step_cmp(std::vector<Body>& bodies, double dt, bool headless, int thread_count) {
     int n = static_cast<int>(bodies.size());
 
     if (n == 0) {
@@ -19,7 +19,6 @@ double step_cmp(std::vector<Body>& bodies, double dt, bool headless) {
 
     StallPolicy::instance().reset_stall_count();
 
-    int thread_count = static_cast<int>(std::thread::hardware_concurrency());
     if (thread_count <= 0) {
         thread_count = 1;
     }
