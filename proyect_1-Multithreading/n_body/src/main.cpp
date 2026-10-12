@@ -1,11 +1,14 @@
 #include "raylib.h"
 #include "../include/body.hpp"
 #include "../include/fine_grained.hpp"
+#include "../include/coarse_grained.hpp"
+#include "../include/stall_policy.hpp"
 #include <vector>
 #include <cmath>
 #include <cstring>
 #include <cstdlib>
 #include <chrono>
+#include <thread>
 #include <iostream>
 
 /* ===== SIMULATION CONSTANTS ================================================================== */
@@ -26,7 +29,7 @@ static const Color PARTICLE_COLOR = {250, 250, 250, 255};
 
 /* ===== EXECUTION MODE ======================================================================== */
 
-enum class execution_mode { seq, fine };
+enum class execution_mode { seq, fine, coarse };
 
 /* ===== SIMULATION CONFIG ===================================================================== */
 
@@ -55,6 +58,8 @@ static simulation_config parse_arguments(int argc, char** argv) {
             configuration_parameters.mode = execution_mode::seq;
         } else if (strcmp(argv[i], "-fine") == 0) {
             configuration_parameters.mode = execution_mode::fine;
+        } else if (strcmp(argv[i], "-coarse") == 0) {
+            configuration_parameters.mode = execution_mode::coarse;
         }
     }
     return configuration_parameters;
@@ -72,6 +77,10 @@ static double step_seq(std::vector<Body>& bodies, double dt, bool headless) {
 
     for (int i = 0; i < n; i++) {
         for (int j = i + 1; j < n; j++) {
+            if (StallPolicy::instance().check()) {
+                std::this_thread::sleep_for(
+                    std::chrono::nanoseconds(StallPolicy::instance().get_stall_penalization()));
+            }
             double dx = bodies[j].get_pos_x() - bodies[i].get_pos_x();
             double dy = bodies[j].get_pos_y() - bodies[i].get_pos_y();
             double dist2 = dx * dx + dy * dy + EPSILON * EPSILON;
@@ -142,6 +151,9 @@ int main(int argc, char** argv) {
                 break;
             case execution_mode::fine:
                 last_step_time_ms = step_fine(bodies, dt, !configuration_parameters.gui);
+                break;
+            case execution_mode::coarse:
+                last_step_time_ms = step_coarse(bodies, dt, !configuration_parameters.gui);
                 break;
         }
 

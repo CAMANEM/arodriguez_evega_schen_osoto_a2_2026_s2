@@ -1,4 +1,5 @@
 #include "../include/fine_grained.hpp"
+#include "../include/stall_policy.hpp"
 #include <thread>
 #include <mutex>
 #include <condition_variable>
@@ -21,7 +22,7 @@ BodyContext::BodyContext(int index, int total_bodies)
     }
 }
 
-// Accumulates force from body j onto body idx, then advances j to the next valid candidate.
+// Accumulates force from body j into body idx, then advances j to the next valid candidate.
 void BodyContext::calculate(const std::vector<Body>& bodies) {
     if (finished) {
         return;
@@ -36,7 +37,7 @@ void BodyContext::calculate(const std::vector<Body>& bodies) {
     fy += force * dy / dist;
 
     j++;
-    // Skip own index after advancing
+    // Skips index after advancing
     if (j == idx) {
         j++;
     }
@@ -45,7 +46,7 @@ void BodyContext::calculate(const std::vector<Body>& bodies) {
     }
 }
 
-// L threads pass a token in a ring; only the token holder executes one quantum then yields.
+// L threads pass a token in a ring.
 double step_fine(std::vector<Body>& bodies, double dt, bool headless) {
     int n = static_cast<int>(bodies.size());
 
@@ -109,6 +110,11 @@ double step_fine(std::vector<Body>& bodies, double dt, bool headless) {
             }
 
             if (cursor < count) {
+                // Stall delays the quantum but does not interrupt it; switch still happens at quantum end.
+                if (StallPolicy::instance().check()) {
+                    std::this_thread::sleep_for(
+                        std::chrono::nanoseconds(StallPolicy::instance().get_stall_penalization()));
+                }
                 contexts[start + cursor].calculate(bodies);
                 if (contexts[start + cursor].finished) {
                     if (finished_count.fetch_add(1) + 1 == n) {
