@@ -16,7 +16,7 @@ SRC_DIR = src
 OBJ_DIR = obj
 BIN = n_body
 
-SRCS = $(SRC_DIR)/main.cpp $(SRC_DIR)/body.cpp $(SRC_DIR)/fine_grained.cpp $(SRC_DIR)/coarse_grained.cpp $(SRC_DIR)/stall_policy.cpp
+SRCS = $(SRC_DIR)/main.cpp $(SRC_DIR)/body.cpp $(SRC_DIR)/fine_grained.cpp $(SRC_DIR)/coarse_grained.cpp $(SRC_DIR)/smt.cpp $(SRC_DIR)/stall_policy.cpp
 OBJS = $(patsubst $(SRC_DIR)/%.cpp, $(OBJ_DIR)/%.o, $(SRCS))
 
 # ===== TARGETS ================================================================================

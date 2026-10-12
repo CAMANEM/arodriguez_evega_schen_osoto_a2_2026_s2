@@ -54,6 +54,8 @@ double step_fine(std::vector<Body>& bodies, double dt, bool headless) {
         return 0.0;
     }
 
+    StallPolicy::instance().reset_stall_count();
+
     std::vector<BodyContext> contexts;
     contexts.reserve(n);
     for (int i = 0; i < n; i++) {
@@ -173,7 +175,8 @@ double step_fine(std::vector<Body>& bodies, double dt, bool headless) {
             std::cout << "Fine-grained - Body " << bodies[i].get_id()
                       << " forces and position updating.\n";
         }
-        std::cout << "Step time: " << step_time_ms << " ms\n";
+        std::cout << "Iteracion: " << step_time_ms << " ms\n";
+        std::cout << "Stalls: " << StallPolicy::instance().get_stall_count() << "\n";
     }
 
     return step_time_ms;

@@ -2,6 +2,7 @@
 #include "../include/body.hpp"
 #include "../include/fine_grained.hpp"
 #include "../include/coarse_grained.hpp"
+#include "../include/smt.hpp"
 #include "../include/stall_policy.hpp"
 #include <vector>
 #include <cmath>
@@ -29,7 +30,7 @@ static const Color PARTICLE_COLOR = {250, 250, 250, 255};
 
 /* ===== EXECUTION MODE ======================================================================== */
 
-enum class execution_mode { seq, fine, coarse };
+enum class execution_mode { seq, fine, coarse, smt };
 
 /* ===== SIMULATION CONFIG ===================================================================== */
 
@@ -60,6 +61,8 @@ static simulation_config parse_arguments(int argc, char** argv) {
             configuration_parameters.mode = execution_mode::fine;
         } else if (strcmp(argv[i], "-coarse") == 0) {
             configuration_parameters.mode = execution_mode::coarse;
+        } else if (strcmp(argv[i], "-smt") == 0) {
+            configuration_parameters.mode = execution_mode::smt;
         }
     }
     return configuration_parameters;
@@ -72,6 +75,8 @@ static double step_seq(std::vector<Body>& bodies, double dt, bool headless) {
     int n = static_cast<int>(bodies.size());
     std::vector<double> fx(n, 0.0);
     std::vector<double> fy(n, 0.0);
+
+    StallPolicy::instance().reset_stall_count();
 
     auto start = std::chrono::high_resolution_clock::now();
 
@@ -109,7 +114,8 @@ static double step_seq(std::vector<Body>& bodies, double dt, bool headless) {
             std::cout << "Main process - Body " << bodies[i].get_id()
                       << " forces and position updating.\n";
         }
-        std::cout << "Step time: " << step_time_ms << " ms\n";
+        std::cout << "Iteracion: " << step_time_ms << " ms\n";
+        std::cout << "Stalls: " << StallPolicy::instance().get_stall_count() << "\n";
     }
 
     return step_time_ms;
@@ -155,6 +161,9 @@ int main(int argc, char** argv) {
             case execution_mode::coarse:
                 last_step_time_ms = step_coarse(bodies, dt, !configuration_parameters.gui);
                 break;
+            case execution_mode::smt:
+                last_step_time_ms = step_smt(bodies, dt, !configuration_parameters.gui);
+                break;
         }
 
         if (configuration_parameters.gui) {
@@ -166,7 +175,8 @@ int main(int argc, char** argv) {
                            static_cast<float>(PARTICLE_R),
                            PARTICLE_COLOR);
             }
-            DrawText(TextFormat("Step: %.3f ms", last_step_time_ms), 10, 10, 20, RAYWHITE);
+            DrawText(TextFormat("Iteracion: %.3f ms", last_step_time_ms), 10, 10, 20, RAYWHITE);
+            DrawText(TextFormat("Stalls: %d", StallPolicy::instance().get_stall_count()), SCREEN_W - 150, 10, 20, RAYWHITE);
             EndDrawing();
         }
 
