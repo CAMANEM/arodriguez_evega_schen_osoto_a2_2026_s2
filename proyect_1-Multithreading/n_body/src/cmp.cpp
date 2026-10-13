@@ -36,13 +36,13 @@ double step_cmp(std::vector<Body>& bodies, double dt, bool headless, int thread_
         int count = (id == thread_count - 1) ? (n - start) : assigned_bodies_size;
 
         for (int i = start; i < start + count; i++) {
+            if (StallPolicy::instance().check()) {
+                std::this_thread::sleep_for(
+                    std::chrono::nanoseconds(StallPolicy::instance().get_stall_penalization()));
+            }
             for (int j = 0; j < n; j++) {
                 if (j == i) {
                     continue;
-                }
-                if (StallPolicy::instance().check()) {
-                    std::this_thread::sleep_for(
-                        std::chrono::nanoseconds(StallPolicy::instance().get_stall_penalization()));
                 }
                 double dx = bodies[j].get_pos_x() - bodies[i].get_pos_x();
                 double dy = bodies[j].get_pos_y() - bodies[i].get_pos_y();

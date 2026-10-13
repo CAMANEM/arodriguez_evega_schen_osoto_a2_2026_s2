@@ -93,6 +93,7 @@ double step_fine(std::vector<Body>& bodies, double dt, bool headless, int thread
         int start = id * assigned_bodies_size;
         int count = (id == thread_count - 1) ? (n - start) : assigned_bodies_size;
         int cursor = 0;
+        int last_checked_cursor = -1;
 
         while (true) {
             {
@@ -111,10 +112,13 @@ double step_fine(std::vector<Body>& bodies, double dt, bool headless, int thread
             }
 
             if (cursor < count) {
-                // Stall delays the quantum but does not interrupt it; switch still happens at quantum end.
-                if (StallPolicy::instance().check()) {
-                    std::this_thread::sleep_for(
-                        std::chrono::nanoseconds(StallPolicy::instance().get_stall_penalization()));
+                // Stall check once per body: delays the quantum but does not interrupt it.
+                if (cursor != last_checked_cursor) {
+                    if (StallPolicy::instance().check()) {
+                        std::this_thread::sleep_for(
+                            std::chrono::nanoseconds(StallPolicy::instance().get_stall_penalization()));
+                    }
+                    last_checked_cursor = cursor;
                 }
                 contexts[start + cursor].calculate(bodies);
                 if (contexts[start + cursor].finished) {

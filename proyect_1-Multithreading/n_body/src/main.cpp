@@ -16,6 +16,7 @@
 #include <sstream>
 #include <iomanip>
 #include <ctime>
+#include <string>
 
 /* ===== SIMULATION CONSTANTS ================================================================== */
 
@@ -46,6 +47,7 @@ struct simulation_config {
     int c = 0;
     bool gui = true;
     execution_mode mode = execution_mode::seq;
+    std::string o = "";
 };
 
 /* ===== ARGUMENT PARSER ======================================================================= */
@@ -62,6 +64,8 @@ static simulation_config parse_arguments(int argc, char** argv) {
             configuration_parameters.e = atoi(argv[++i]);
         } else if (strcmp(argv[i], "-c") == 0 && i + 1 < argc) {
             configuration_parameters.c = atoi(argv[++i]);
+        } else if (strcmp(argv[i], "-o") == 0 && i + 1 < argc) {
+            configuration_parameters.o = argv[++i];
         } else if (strcmp(argv[i], "-gui") == 0) {
             configuration_parameters.gui = true;
         } else if (strcmp(argv[i], "-headless") == 0) {
@@ -94,11 +98,11 @@ static double step_seq(std::vector<Body>& bodies, double dt, bool headless) {
     auto start = std::chrono::high_resolution_clock::now();
 
     for (int i = 0; i < n; i++) {
+        if (StallPolicy::instance().check()) {
+            std::this_thread::sleep_for(
+                std::chrono::nanoseconds(StallPolicy::instance().get_stall_penalization()));
+        }
         for (int j = i + 1; j < n; j++) {
-            if (StallPolicy::instance().check()) {
-                std::this_thread::sleep_for(
-                    std::chrono::nanoseconds(StallPolicy::instance().get_stall_penalization()));
-            }
             double dx = bodies[j].get_pos_x() - bodies[i].get_pos_x();
             double dy = bodies[j].get_pos_y() - bodies[i].get_pos_y();
             double dist2 = dx * dx + dy * dy + EPSILON * EPSILON;
@@ -177,9 +181,21 @@ int main(int argc, char** argv) {
     int csv_cores   = (configuration_parameters.mode == execution_mode::seq) ? 1 : core_count;
     int csv_threads = (configuration_parameters.mode == execution_mode::seq) ? 1 : thread_count;
 
-    std::string csv_path = "data/execution_results_" + current_timestamp() + ".csv";
-    std::ofstream csv(csv_path);
-    csv << "iteracion,particulas,modo,steps,metodologia,nucleos,hilos,tiempo_total_ms\n";
+    // Append to -o path when provided; otherwise create a timestamped file.
+    std::string csv_path;
+    bool csv_append = false;
+    if (!configuration_parameters.o.empty()) {
+        csv_path = configuration_parameters.o;
+        std::ifstream check(csv_path);
+        csv_append = check.good();
+    } else {
+        csv_path = "data/execution_results_" + current_timestamp() + ".csv";
+    }
+
+    std::ofstream csv(csv_path, csv_append ? std::ios::app : std::ios::out);
+    if (!csv_append) {
+        csv << "iteracion,particulas,modo,steps,metodologia,nucleos,hilos,stalls_totales,tiempo_total_ms\n";
+    }
 
     if (configuration_parameters.gui) {
         InitWindow(SCREEN_W, SCREEN_H, "Problem: N-Body");
@@ -198,6 +214,7 @@ int main(int argc, char** argv) {
         }
 
         int step_count = 0;
+        long long total_stalls = 0;
         bool running = true;
 
         auto exec_start = std::chrono::high_resolution_clock::now();
@@ -230,6 +247,8 @@ int main(int argc, char** argv) {
                     break;
             }
 
+            total_stalls += StallPolicy::instance().get_stall_count();
+
             if (configuration_parameters.gui) {
                 BeginDrawing();
                 ClearBackground(BG_COLOR);
@@ -260,6 +279,7 @@ int main(int argc, char** argv) {
             << mode_name(configuration_parameters.mode) << ","
             << csv_cores << ","
             << csv_threads << ","
+            << total_stalls << ","
             << std::fixed << std::setprecision(3) << total_time_ms << "\n";
         csv.flush();
     }

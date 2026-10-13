@@ -70,14 +70,16 @@ double step_coarse(std::vector<Body>& bodies, double dt, bool headless, int thre
                 cursor++;
             }
 
-            // Run multiple quant until a stall occurs or this group's work is done.
+            // Stall check once per body: if triggered, context-switches immediately.
             while (cursor < count && !all_finished.load()) {
                 if (StallPolicy::instance().check()) {
-                    // Stall is the context-switch trigger and changes inmediately.
                     break;
                 }
 
-                contexts[start + cursor].calculate(bodies);
+                // Run all pairs for this body without further interruption.
+                while (!contexts[start + cursor].finished && !all_finished.load()) {
+                    contexts[start + cursor].calculate(bodies);
+                }
 
                 if (contexts[start + cursor].finished) {
                     if (finished_count.fetch_add(1) + 1 == n) {
