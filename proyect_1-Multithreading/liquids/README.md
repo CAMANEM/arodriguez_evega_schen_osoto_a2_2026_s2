@@ -24,8 +24,8 @@ pipeline so its stage timings can be compared directly.
   computational stage. It intentionally does not create operating-system
   threads; real-thread strategies belong to later SMT/CMP implementations.
 - `strategies/coarse_grained`: cooperative coarse-grained execution using
-  statically partitioned virtual workers, large chunks, and deterministic
-  stall/yield events.
+  real `std::thread` workers, static partitions, large chunks, `join()` stage
+  barriers, and deterministic optional yields.
 - `strategies/smt`: real `std::thread` execution with configurable
   oversubscription (`L * factor`).
 - `strategies/cmp`: real `std::thread` execution with one worker per logical
@@ -58,3 +58,16 @@ fine-grained, coarse-grained, SMT, and CMP execution. The neighbor search is a
 distinct stage. The returned `SphRunMetrics` contains wall time and execution
 count for every stage, so benchmarks can report each phase without mixing
 neighbor-search overhead into density.
+
+## Scripts
+
+From the repository root:
+
+```bash
+./proyect_1-Multithreading/scripts/run_liquids.sh test
+./proyect_1-Multithreading/scripts/run_liquids.sh benchmark
+./proyect_1-Multithreading/scripts/sweep_liquids.sh
+```
+
+The sweep varies coarse-grained real-thread counts and also runs SMT and CMP.
+The scripts require CMake and a C++17 compiler on the target machine.

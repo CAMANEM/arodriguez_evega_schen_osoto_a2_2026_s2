@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <chrono>
 #include <stdexcept>
+#include <thread>
 
 namespace {
 
@@ -36,38 +37,28 @@ void CoarseGrainedSphScheme::runCoarseGrained(int itemCount, Task task) const {
     const int activeThreads = std::min(threadCount_, itemCount);
     const int partitionSize =
         (itemCount + activeThreads - 1) / activeThreads;
-    std::vector<int> cursors(static_cast<std::size_t>(activeThreads));
-    std::vector<int> ends(static_cast<std::size_t>(activeThreads));
-    int activeCount = 0;
 
+    std::vector<std::thread> workers;
+    workers.reserve(static_cast<std::size_t>(activeThreads));
     for (int worker = 0; worker < activeThreads; ++worker) {
         const int begin = worker * partitionSize;
         const int end = std::min(itemCount, begin + partitionSize);
-        cursors[static_cast<std::size_t>(worker)] = begin;
-        ends[static_cast<std::size_t>(worker)] = end;
-        if (begin < end) {
-            ++activeCount;
-        }
+        workers.emplace_back([this, worker, begin, end, &task]() {
+            for (int cursor = begin; cursor < end;) {
+                const int segmentEnd =
+                    std::min(end, cursor + chunkItems_);
+                task(worker, cursor, segmentEnd);
+                cursor = segmentEnd;
+
+                if (cursor < end && shouldYieldOnStall(worker, cursor)) {
+                    std::this_thread::yield();
+                }
+            }
+        });
     }
 
-    int currentWorker = 0;
-    while (activeCount > 0) {
-        int& cursor = cursors[static_cast<std::size_t>(currentWorker)];
-        const int end = ends[static_cast<std::size_t>(currentWorker)];
-        if (cursor < end) {
-            int segmentSize = end - cursor;
-            if (shouldYieldOnStall(currentWorker, cursor)) {
-                segmentSize =
-                    std::min(segmentSize, std::max(1, partitionSize / 3));
-            }
-            const int segmentEnd = cursor + segmentSize;
-            task(currentWorker, cursor, segmentEnd);
-            cursor = segmentEnd;
-            if (cursor >= end) {
-                --activeCount;
-            }
-        }
-        currentWorker = (currentWorker + 1) % activeThreads;
+    for (std::thread& worker : workers) {
+        worker.join();
     }
 }
 
