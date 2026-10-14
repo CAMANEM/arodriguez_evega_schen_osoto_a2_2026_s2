@@ -1,7 +1,7 @@
 # Ray tracing benchmark
 
 Subproyecto C++17 para ejecutar y comparar cinco esquemas de ejecución con una
-imagen de 80 x 60 píxeles. El renderer, el benchmark y el exportador de imágenes
+imagen de 240 x 160 píxeles. El renderer, el benchmark y el exportador de imágenes
 están dentro de esta carpeta; el benchmark reutiliza la interfaz de métricas
 compartida en `../shared`.
 
@@ -17,6 +17,8 @@ segundos antes de calcular las métricas.
 - Compilador C++17 (por ejemplo, MinGW-w64 GCC, GCC, Clang o Visual C++).
 - Soporte de threads del sistema, detectado por CMake.
 - Python 3 y Pillow para generar el GIF (`python -m pip install Pillow`).
+- Python 3 y Matplotlib para el análisis de workers
+  (`python -m pip install matplotlib`).
 
 ## Compilación
 
@@ -103,6 +105,64 @@ scheduler.
 ```powershell
 ./build-msys2/raytracing_benchmark.exe --model all --runs 200 --output data/benchmark_raytracing.csv
 ```
+
+### Barrido de workers y gráficas experimentales
+
+Para comparar los cuatro modelos paralelos contra el baseline secuencial en
+varias cantidades de workers, ejecuta el script desde esta carpeta en el
+sistema operativo instalado directamente sobre el hardware físico. No ejecutes
+las mediciones bajo una máquina virtual, contenedor o WSL. El script rechaza
+WSL y contenedores Linux conocidos; la opción de confirmación es una declaración
+del usuario, no una detección infalible de virtualización.
+
+```powershell
+python scripts/run_worker_sweep.py --workers 1 2 4 8 --runs 200 --confirm-physical-host
+```
+
+El script invoca automáticamente `build-msys2/raytracing_benchmark.exe` (o las
+rutas habituales de `build/`); se puede indicar otra ruta con `--benchmark`.
+Cada configuración se ejecuta con todos los modelos y al menos 200 repeticiones.
+El baseline secuencial de esa campaña se usa para calcular el speedup de FGMT,
+CGMT, SMT y CMP. No se pasa `--gif`, por lo que no se genera un GIF.
+
+Para calcular la distribución y convergencia hacen falta las muestras de cada
+frame. El script activa `--frame-csv` internamente, consolida las muestras de
+todos los modelos/configuraciones en un único `worker_sweep_frames.csv` y borra
+los CSV temporales por modelo al terminar cada campaña. Así no quedan archivos
+CSV separados por modelo.
+
+Por defecto, los resultados quedan en `data/worker_sweep/`:
+
+- `speedup_vs_workers.png`: speedup calculado a partir de `virtual_time_ns`
+  para los cuatro modelos en una sola gráfica, con color identificable en la
+  leyenda y barras del intervalo de confianza del 95 %.
+  El eje X muestra workers configurados; para SMT son contextos virtuales, no
+  hilos reales del sistema operativo.
+- `virtual_time_distributions.png`: boxplots del tiempo virtual de todas las
+  ejecuciones de cada modelo y configuración (unidad: segundos virtuales).
+- `convergence.png`: evolución de la media acumulada del tiempo virtual conforme
+  se agregan ejecuciones.
+- `worker_sweep_summary.csv`: métricas del benchmark y estadísticas derivadas
+  de muestras de tiempo virtual, incluyendo `virtual_speedup` y su intervalo.
+- `worker_sweep_frames.csv`: muestras individuales combinadas que alimentan
+  las gráficas de distribución y convergencia.
+- `convergence.csv`: media, desviación estándar, intervalo de confianza del
+  95 % del tiempo virtual y ancho relativo del intervalo por configuración.
+
+El speedup de estas gráficas es `media del tiempo virtual secuencial /
+media del tiempo virtual del modelo`. No es el speedup de tiempo de pared:
+para el rendimiento observado en la máquina, consulta las columnas
+`speedup` basadas en `execution_time_s` del CSV resumen original. El tiempo
+virtual representa las reglas del modelo, y su interpretación depende de cada
+arquitectura simulada (por ejemplo, CMP reporta el máximo del tiempo virtual
+por core, mientras FGMT/CGMT agregan los quanta de su pipeline compartido).
+
+El script marca como estable una configuración cuyo semiancho del intervalo
+normal aproximado del 95 % no excede el 5 % de su media. Este umbral es un
+criterio operativo para señalar configuraciones que podrían requerir más runs,
+no una garantía universal de convergencia. Si alguna lo supera, aumenta
+`--runs` y repite el barrido. Los resultados del enunciado deben obtenerse y
+discutirse en el paper usando las mediciones realizadas en hardware físico.
 
 Opciones:
 
