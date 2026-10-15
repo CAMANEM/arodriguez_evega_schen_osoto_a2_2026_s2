@@ -111,13 +111,15 @@ static double speedup_ci_half_width(const SummaryStats& sequential,
 		model_relative_error * model_relative_error);
 }
 
-static const ModelConfig models[] = {
-	{"sequential", execution_model::sequential, 1},
-	{"fgmt", execution_model::fine_grained, constants::NUM_THREADS},
-	{"cgmt", execution_model::coarse_grained, constants::NUM_THREADS},
-	{"smt", execution_model::smt, constants::smt_context_count()},
-	{"cmp", execution_model::cmp, constants::CMP_NUM_CORES}
-};
+static std::vector<ModelConfig> make_models() {
+	return {
+		{"sequential", execution_model::sequential, 1},
+		{"fgmt", execution_model::fine_grained, constants::NUM_THREADS},
+		{"cgmt", execution_model::coarse_grained, constants::NUM_THREADS},
+		{"smt", execution_model::smt, constants::smt_context_count()},
+		{"cmp", execution_model::cmp, constants::CMP_NUM_CORES}
+	};
+}
 
 /**
  * @brief Busca la configuración de un modelo registrado.
@@ -290,6 +292,8 @@ int main(int argc, char* argv[]) {
 	try {
 		int runs = 200;
 		int requested_workers = 0;
+		int image_width = constants::IMAGE_WIDTH;
+		int image_height = constants::IMAGE_HEIGHT;
 		std::string selected_model = "all";
 		std::string output = constants::RESULTS_DIR + "/benchmark.csv";
 		bool generate_gif = false;
@@ -299,9 +303,11 @@ int main(int argc, char* argv[]) {
 			const std::string argument = argv[i];
 			if (argument == "--help" || argument == "-h") {
 				std::cout << "Usage: raytracing_benchmark [--model all|sequential|fgmt|cgmt|smt|cmp] "
-							 "[--runs N] [--workers N] [--output CSV] [--frame-csv] [--gif]\n"
+							 "[--runs N] [--workers N] [--width N] [--height N] "
+							 "[--output CSV] [--frame-csv] [--gif]\n"
 							 "--workers configures FGMT/CGMT/CMP workers and SMT virtual contexts; "
-							 "sequential remains one worker.\n";
+							 "sequential remains one worker.\n"
+							 "--width and --height set the image dimensions (default: 240 x 160).\n";
 				return 0;
 			} else if (argument == "--model" && i + 1 < argc) {
 				selected_model = argv[++i];
@@ -309,8 +315,10 @@ int main(int argc, char* argv[]) {
 				runs = parse_positive_integer(argv[++i], "runs");
 			} else if (argument == "--workers" && i + 1 < argc) {
 				requested_workers = parse_positive_integer(argv[++i], "workers");
-				if (requested_workers > constants::IMAGE_WIDTH * constants::IMAGE_HEIGHT)
-					throw std::invalid_argument("workers cannot exceed the number of pixels");
+			} else if (argument == "--width" && i + 1 < argc) {
+				image_width = parse_positive_integer(argv[++i], "width");
+			} else if (argument == "--height" && i + 1 < argc) {
+				image_height = parse_positive_integer(argv[++i], "height");
 			} else if (argument == "--output" && i + 1 < argc) {
 				output = argv[++i];
 			} else if (argument == "--frame-csv") {
@@ -322,8 +330,12 @@ int main(int argc, char* argv[]) {
 			}
 		}
 
-		std::vector<ModelConfig> configured_models(
-			std::begin(models), std::end(models));
+		constants::set_image_dimensions(image_width, image_height);
+		const int pixel_count = constants::IMAGE_WIDTH * constants::IMAGE_HEIGHT;
+		if (requested_workers > pixel_count)
+			throw std::invalid_argument("workers cannot exceed the number of pixels");
+
+		std::vector<ModelConfig> configured_models = make_models();
 		if (requested_workers > 0) {
 			for (ModelConfig& config : configured_models)
 				if (config.model != execution_model::sequential)
@@ -357,7 +369,8 @@ int main(int argc, char* argv[]) {
 		}
 
 		write_csv(output, results, baseline);
-		std::cout << "Workload: raytracing | runs: " << runs << '\n';
+		std::cout << "Workload: raytracing | resolution: " << constants::IMAGE_WIDTH
+				  << 'x' << constants::IMAGE_HEIGHT << " | runs: " << runs << '\n';
 		std::cout << std::left << std::setw(14) << "model" << std::right
 				  << std::setw(14) << "wall (s)" << std::setw(12) << "wall-up"
 				  << std::setw(14) << "efficiency" << std::setw(18) << "virtual (ns)"

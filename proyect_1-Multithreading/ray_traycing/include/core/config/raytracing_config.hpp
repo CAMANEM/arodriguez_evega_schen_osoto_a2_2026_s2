@@ -8,6 +8,8 @@
 #include "core/geometry/Vector3.h"
 #include <algorithm>
 #include <array>
+#include <limits>
+#include <stdexcept>
 #include <string>
 #include <thread>
 
@@ -20,10 +22,23 @@ struct SphereConfig {
     Vector3 color;
 };
 
-/** @brief Resolución horizontal del frame, en píxeles. */
-inline constexpr int IMAGE_WIDTH = 240;
-/** @brief Resolución vertical del frame, en píxeles. */
-inline constexpr int IMAGE_HEIGHT = 160;
+/** @brief Resolución horizontal predeterminada del frame, en píxeles. */
+inline int IMAGE_WIDTH = 240;
+/** @brief Resolución vertical predeterminada del frame, en píxeles. */
+inline int IMAGE_HEIGHT = 160;
+
+/**
+ * @brief Configura la resolución activa del frame.
+ * @throws std::invalid_argument Si las dimensiones no son positivas o el área excede int.
+ */
+inline void set_image_dimensions(int width, int height) {
+    if (width < 1 || height < 1 ||
+        static_cast<long long>(width) * height > std::numeric_limits<int>::max())
+        throw std::invalid_argument(
+            "image dimensions must be positive and their product must fit in an int");
+    IMAGE_WIDTH = width;
+    IMAGE_HEIGHT = height;
+}
 /**
  * @brief Tres esferas sobre X: roja a la izquierda, verde al centro y azul a la derecha.
  * @details La esfera verde está centrada en SCENE_CENTER y cada esfera tiene radio distinto.

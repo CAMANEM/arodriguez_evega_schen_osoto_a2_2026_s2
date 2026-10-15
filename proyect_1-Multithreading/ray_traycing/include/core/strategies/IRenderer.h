@@ -22,7 +22,7 @@ public:
     /** @brief Destructor virtual para destruir implementaciones por interfaz. */
     virtual ~IRenderer() = default;
 
-    /** @brief Renderiza un frame y devuelve IMAGE_WIDTH × IMAGE_HEIGHT colores row-major. */
+    /** @brief Renderiza un frame de la resolución activa y devuelve colores row-major. */
     virtual std::vector<Vector3> render_frame() = 0;
 
     /** @return Métricas por worker; vacío si el modelo no las recopila. */

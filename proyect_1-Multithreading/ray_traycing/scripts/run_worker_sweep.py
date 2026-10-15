@@ -21,7 +21,7 @@ import matplotlib.pyplot as plt
 
 
 RAYTRACING_DIR = Path(__file__).resolve().parents[1]
-PIXEL_COUNT = 240 * 160
+MAX_PIXEL_COUNT = 2_147_483_647
 MODELS = ("fgmt", "cgmt", "smt", "cmp")
 MODEL_COLORS = {
     "fgmt": "#0072B2",
@@ -82,6 +82,18 @@ def parse_args() -> argparse.Namespace:
         help="repetitions per model and worker count; minimum is 200 (default: 200)",
     )
     parser.add_argument(
+        "--width",
+        type=int,
+        default=240,
+        help="image width in pixels (default: 240)",
+    )
+    parser.add_argument(
+        "--height",
+        type=int,
+        default=160,
+        help="image height in pixels (default: 160)",
+    )
+    parser.add_argument(
         "--benchmark",
         type=Path,
         help="path to raytracing_benchmark (auto-detected from build directories by default)",
@@ -101,8 +113,13 @@ def parse_args() -> argparse.Namespace:
 
     if args.runs < 200:
         parser.error("--runs must be at least 200 to satisfy the project's experiment requirement")
-    if not args.workers or any(workers < 1 or workers > PIXEL_COUNT for workers in args.workers):
-        parser.error(f"--workers values must be between 1 and {PIXEL_COUNT}")
+    if args.width < 1 or args.height < 1:
+        parser.error("--width and --height must be positive integers")
+    pixel_count = args.width * args.height
+    if pixel_count > MAX_PIXEL_COUNT:
+        parser.error("--width multiplied by --height must not exceed 2147483647")
+    if not args.workers or any(workers < 1 or workers > pixel_count for workers in args.workers):
+        parser.error(f"--workers values must be between 1 and {pixel_count}")
     if len(set(args.workers)) != len(args.workers):
         parser.error("--workers values must not contain duplicates")
     if not args.confirm_physical_host:
@@ -214,6 +231,8 @@ def run_campaign(
     benchmark: Path,
     workers: list[int],
     runs: int,
+    width: int,
+    height: int,
     output_dir: Path,
 ) -> tuple[list[dict[str, str]], list[dict[str, str]]]:
     summary_rows: list[dict[str, str]] = []
@@ -235,11 +254,18 @@ def run_campaign(
                 str(worker_count),
                 "--runs",
                 str(runs),
+                "--width",
+                str(width),
+                "--height",
+                str(height),
                 "--frame-csv",
                 "--output",
                 str(summary_path),
             ]
-            print(f"\nBenchmark: workers={worker_count}, runs={runs}")
+            print(
+                f"\nBenchmark: workers={worker_count}, runs={runs}, "
+                f"resolution={width}x{height}"
+            )
             subprocess.run(command, cwd=RAYTRACING_DIR, check=True)
 
             current_summary_fields, current_summary_rows = read_csv(summary_path)
@@ -458,14 +484,19 @@ def main() -> int:
         output_dir.mkdir(parents=True, exist_ok=True)
 
         summary_rows, frame_rows = run_campaign(
-            benchmark, args.workers, args.runs, output_dir
+            benchmark, args.workers, args.runs, args.width, args.height, output_dir
         )
         summary_rows = add_virtual_time_analysis(summary_rows, frame_rows)
-        summary_fields = ["configured_workers"] + [
-            field for field in summary_rows[0] if field != "configured_workers"
+        for row in (*summary_rows, *frame_rows):
+            row["image_width"] = str(args.width)
+            row["image_height"] = str(args.height)
+        summary_fields = ["image_width", "image_height", "configured_workers"] + [
+            field for field in summary_rows[0]
+            if field not in {"image_width", "image_height", "configured_workers"}
         ]
-        frame_fields = ["configured_workers"] + [
-            field for field in frame_rows[0] if field != "configured_workers"
+        frame_fields = ["image_width", "image_height", "configured_workers"] + [
+            field for field in frame_rows[0]
+            if field not in {"image_width", "image_height", "configured_workers"}
         ]
         write_csv(output_dir / "worker_sweep_summary.csv", summary_fields, summary_rows)
         write_csv(output_dir / "worker_sweep_frames.csv", frame_fields, frame_rows)
