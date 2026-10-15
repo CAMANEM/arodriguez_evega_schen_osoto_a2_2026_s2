@@ -4,8 +4,8 @@
  */
 #pragma once
 
-#include "raytracing_config.hpp"
-#include "Vector3.h"
+#include "core/config/raytracing_config.hpp"
+#include "core/geometry/Vector3.h"
 #include <algorithm>
 #include <filesystem>
 #include <fstream>

@@ -5,18 +5,16 @@
 #ifndef FINEGRAINED_RENDERER_H
 #define FINEGRAINED_RENDERER_H
 
-#include "IRenderer.h"
-#include "Scene.h"
-#include "CacheModel.h"
-#include "Metrics.h"
-#include "Ray.h"
-#include "raytracing_config.hpp"
-#include "SchedulerLogger.h"
+#include "core/strategies/IRenderer.h"
+#include "core/utils/CacheModel.h"
+#include "core/utils/Metrics.h"
+#include "core/config/raytracing_config.hpp"
+#include "core/utils/SchedulerLogger.h"
 #include <vector>
-#include <thread>
 #include <atomic>
 #include <condition_variable>
 #include <mutex>
+#include <memory>
 
 /** @brief Semáforo binario con mutex y condition_variable para turnos FGMT. */
 class CountingSemaphore {
@@ -51,14 +49,13 @@ private:
 
 // FinegrainedRenderer: modelo FGMT (Fine-Grained Multithreading).
 //
-// Simula 1 pipeline con NUM_THREADS contextos de hardware.
+// Simula 1 pipeline con un número configurable de contextos de hardware.
 // Scheduler: semáforo por thread — cada thread espera en su propio
 // sem_wait() y, al terminar su ciclo, señala directamente al siguiente
 // thread con píxeles pendientes (skip de IDLE).
 //
-// Esto elimina los spurious wakeups que generaba notify_all():
-//   Antes : notify_all() → wakeup × NUM_THREADS × 192 000 ciclos
-//   Ahora : sem_post(next) → 1 wakeup × ciclos_activos
+// Cada semáforo despierta solo al siguiente worker activo. Los workers sin
+// trabajo permanecen bloqueados hasta que el último worker los libera.
 //
 // Comportamiento por ciclo:
 //   Sin stall : COMPUTE — renderiza el pixel y avanza (+PIXEL_QUANTUM_NS)
@@ -66,11 +63,10 @@ private:
 //                          (+NOP_PENALTY_NS)
 //   IDLE      : el thread duerme hasta broadcast final (no consume VT)
 //
-// Tiempo virtual = SUMA de los cuatro threads (pipeline compartido).
+// Tiempo virtual = suma del tiempo registrado por los workers activos.
 /** @brief Simula FGMT con un slot compartido y rotación en cada turno activo. */
 class FinegrainedRenderer : public IRenderer {
 private:
-    Scene scene;
     std::vector<Vector3>              frame;
     std::vector<CacheModel>           cache_models;
     std::vector<trace::ThreadMetrics> thread_stats;
@@ -83,18 +79,15 @@ private:
 
     long long virtual_time_ns_ = 0LL;
 
-    // Posición de cámara para el frame actual (actualizada por GenericRunner).
-    // Permite que el scheduler reciba la órbita elíptica sin cambiar su lógica.
-    Vector3 camera_pos_;
-
     // Scheduler FGMT: semáforo por thread para señalización punto a punto.
     // slots_[i]: thread i espera aquí su turno de pipeline.
     // tile_done_[i]: true cuando thread i terminó todos sus píxeles.
-    // threads_completed_: contador atómico; al llegar a NUM_THREADS el
+    // threads_completed_: contador atómico; al llegar a worker_count_ el
     //   último thread hace broadcast para desbloquear los demás.
-    CountingSemaphore        slots_[constants::NUM_THREADS];
+    const int                worker_count_;
+    std::vector<CountingSemaphore> slots_;
     std::atomic<int>         threads_completed_{0};
-    std::atomic<bool>        tile_done_[constants::NUM_THREADS];
+    std::unique_ptr<std::atomic<bool>[]> tile_done_;
     // global_cycle_: cuenta cuántos slots de pipeline se han despachado.
     // Incrementado atómicamente por el thread activo al tomar el semáforo.
     // Serializado de facto por el protocolo de semáforos (un thread activo).
@@ -105,21 +98,16 @@ private:
     void render_tile_worker(int thread_id);
 
 public:
-    // Constructor: divide el frame en 4 tiles 2×2 (uno por thread) e inicializa
-    // los CacheModel con semillas deterministas (base 42 + thread_id).
-    /** @brief Divide el frame entre NUM_THREADS y prepara cachés deterministas. */
-    FinegrainedRenderer();
-
-    // Actualiza la posición de cámara antes de render_frame().
-    // GenericRunner la llama una vez por frame; el scheduler FGMT no cambia.
-    /** @param pos Posición de cámara para el siguiente frame. */
-    void set_camera_pos(const Vector3& pos) override { camera_pos_ = pos; }
+    // Divide los índices row-major en rangos contiguos; el último recibe residuos.
+    // Cada worker usa una semilla de caché propia.
+    /** @param workers Cantidad de workers FGMT, entre 1 y la cantidad de píxeles. */
+    explicit FinegrainedRenderer(int workers = constants::NUM_THREADS);
 
     // Habilita la traza del scheduler para los primeros `cycles` ciclos de pipeline.
     /** @param cycles Cantidad de ciclos iniciales que se registran. */
     void set_verbose(int cycles) override { logger_.set_max_cycles(cycles); }
 
-    // render_frame(): resetea estado, lanza NUM_THREADS threads (uno por tile) y
+    // render_frame(): resetea estado, lanza worker_count_ threads (uno por tile) y
     // espera a que todos terminen. VT = suma de VTs por thread (pipeline compartido).
     /** @return Frame completo después de que todos los workers terminen. */
     std::vector<Vector3> render_frame() override;
@@ -128,7 +116,7 @@ public:
     /** @return Identificador `fgmt`. */
     std::string get_model_name() const override { return "fgmt"; }
 
-    // get_thread_metrics(): estadísticas (misses, VT) de los 4 threads del último frame.
+    // get_thread_metrics(): estadísticas de misses y tiempo virtual por worker.
     /** @return Contadores por worker del último frame. */
     const std::vector<trace::ThreadMetrics>& get_thread_metrics() const override { return thread_stats; }
 
@@ -141,6 +129,18 @@ public:
     int get_total_stalls() const override {
         int total = 0;
         for (const auto& ts : thread_stats) total += ts.cache_misses;
+        return total;
+    }
+    /** @return Suma de latencias virtuales de stall de todos los workers. */
+    long long get_stall_time_ns() const override {
+        long long total = 0LL;
+        for (const auto& ts : thread_stats) total += ts.stall_time_ns;
+        return total;
+    }
+    /** @return Transferencias a un contexto distinto durante el último frame. */
+    int get_context_switches() const override {
+        int total = 0;
+        for (const auto& ts : thread_stats) total += ts.context_switches;
         return total;
     }
 };

@@ -5,12 +5,41 @@
 #ifndef RENDERER_UTILS_H
 #define RENDERER_UTILS_H
 
-#include "CacheModel.h"
-#include "Metrics.h"
-#include "raytracing_config.hpp"
+#include "core/utils/CacheModel.h"
+#include "core/utils/Metrics.h"
+#include <chrono>
+#include <stdexcept>
+#include <thread>
 #include <vector>
 
 namespace trace {
+
+/**
+ * @brief Valida una cantidad de workers que debe recibir trabajo no vacío.
+ * @param workers Cantidad solicitada.
+ * @param max_workers Límite impuesto por el número de unidades de trabajo.
+ * @return La cantidad validada.
+ * @throws std::invalid_argument Si la cantidad no está en el rango permitido.
+ */
+inline int validated_worker_count(int workers, int max_workers) {
+    if (workers < 1 || workers > max_workers)
+        throw std::invalid_argument(
+            "workers must be between 1 and the total number of pixels");
+    return workers;
+}
+
+/**
+ * @brief Consume tiempo de pared mediante espera activa para un cache miss.
+ * @param duration_ns Duración de la espera simulada en nanosegundos.
+ */
+inline void wait_for_stall_wall_time(long long duration_ns) {
+    if (duration_ns <= 0) return;
+
+    const auto deadline = std::chrono::steady_clock::now() +
+        std::chrono::nanoseconds(duration_ns);
+    while (std::chrono::steady_clock::now() < deadline) {
+    }
+}
 
 // reset_thread_stats: Reinicia el estado de contadores y caches de todos
 // los threads antes de iniciar un nuevo render_frame().
@@ -30,11 +59,17 @@ inline void reset_thread_stats(
     std::vector<ThreadMetrics>& stats,
     std::vector<CacheModel>&    caches)
 {
-    for (int i = 0; i < constants::NUM_THREADS; ++i) {
+    if (stats.size() != caches.size())
+        throw std::invalid_argument("worker metrics and caches must have equal sizes");
+
+    for (std::size_t i = 0; i < stats.size(); ++i) {
         caches[i].reset();
         stats[i].nops_count      = 0;
         stats[i].nop_time_ns     = 0.0;
         stats[i].cache_misses    = 0;
+        stats[i].stall_time_ns   = 0LL;
+        stats[i].context_switch_time_ns = 0LL;
+        stats[i].context_switches = 0;
         stats[i].virtual_time_ns = 0LL;
     }
 }

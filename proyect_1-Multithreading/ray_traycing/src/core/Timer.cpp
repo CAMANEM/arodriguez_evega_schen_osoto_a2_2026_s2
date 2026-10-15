@@ -2,7 +2,7 @@
  * @file Timer.cpp
  * @brief Implementación del cronómetro de pared usado por el benchmark.
  */
-#include "core/Timer.hpp"
+#include "core/utils/Timer.hpp"
 
 void Timer::start() {
     startTime_ = std::chrono::high_resolution_clock::now();

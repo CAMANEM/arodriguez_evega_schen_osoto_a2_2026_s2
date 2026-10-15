@@ -5,17 +5,13 @@
 #ifndef COARSE_RENDERER_H
 #define COARSE_RENDERER_H
 
-#include "IRenderer.h"
-#include "Scene.h"
-#include "CacheModel.h"
-#include "Metrics.h"
-#include "Ray.h"
-#include "SchedulerLogger.h"
+#include "core/strategies/IRenderer.h"
+#include "core/utils/CacheModel.h"
+#include "core/utils/Metrics.h"
+#include "core/utils/SchedulerLogger.h"
 #include <vector>
-#include <thread>
 #include <mutex>
 #include <condition_variable>
-#include <atomic>
 
 // CoarseRenderer: Renderizador CGMT (Coarse-Grained Multithreading).
 //
@@ -25,10 +21,10 @@
 //
 // Mecanismo (idéntico al código de referencia en C):
 //   - current_thread_ indica qué thread tiene el pipeline.
-//   - En STALL: el thread CEDE el slot INMEDIATAMENTE al siguiente ready.
-//        → stats: 0 ns de VT (stall completamente oculto).
-//        → el pixel NO avanza; se reintentará cuando recupere el slot.
-//        → el otro thread usa el slot → ningún ciclo desperdiciado.
+//   - En STALL: paga 400 ns de cambio de contexto y cede el slot.
+//        → la latencia del miss (3200 ns) queda pendiente para ese worker.
+//        → otro worker ejecuta después del costo de cambio.
+//        → el pixel NO avanza y se reintenta cuando venza la latencia.
 //   - En COMPUTE: se renderiza el pixel, se avanza, sin cambio de contexto.
 //        → stats: +PIXEL_QUANTUM_NS
 //   - Al terminar el tile: switch_to_next_thread() sin coste extra.
@@ -38,7 +34,6 @@
 /** @brief Simula CGMT con un slot y cambio de contexto al detectar stalls. */
 class CoarseRenderer : public IRenderer {
 private:
-    Scene scene;
     std::vector<Vector3> frame;
     std::vector<CacheModel> cache_models;
     std::vector<trace::ThreadMetrics> thread_stats;
@@ -50,6 +45,7 @@ private:
     std::vector<Task> tasks;
     
     // Variables de scheduler CGMT
+    const int worker_count;
     std::mutex sched_mutex;
     std::condition_variable sched_cv;
     int current_thread;                // Thread que tiene asignado el pipeline
@@ -60,12 +56,8 @@ private:
 
     long long virtual_time_ns_ = 0LL;
 
-    // Posición de cámara para el frame actual (actualizada por GenericRunner).
-    // Permite recibir la órbita elíptica sin modificar el scheduler CGMT.
-    Vector3 camera_pos_;
-
     // switch_to_next_thread(): Scheduler hardware CGMT.
-    // Busca el siguiente thread activo (round-robin, saltando los terminados).
+    // Busca el siguiente thread activo; si es el único, conserva el slot.
     // Debe llamarse mientras se sostiene sched_mutex.
     /** @brief Rota el slot al siguiente tile pendiente bajo sched_mutex. */
     void switch_to_next_thread();
@@ -73,13 +65,8 @@ private:
     void render_worker(int thread_id);
 
 public:
-    /** @brief Divide el frame entre NUM_THREADS e inicializa el scheduler. */
-    CoarseRenderer();
-
-    // Actualiza la posición de cámara antes de render_frame().
-    // GenericRunner la llama una vez por frame; el scheduler CGMT no cambia.
-    /** @param pos Posición de cámara para el siguiente frame. */
-    void set_camera_pos(const Vector3& pos) override { camera_pos_ = pos; }
+    /** @param workers Cantidad de workers CGMT, entre 1 y la cantidad de píxeles. */
+    explicit CoarseRenderer(int workers = constants::NUM_THREADS);
 
     // Habilita la traza del scheduler para los primeros `cycles` ciclos de pipeline.
     /** @param cycles Cantidad de ciclos iniciales que se registran. */
@@ -99,6 +86,24 @@ public:
     int get_total_stalls() const override {
         int total = 0;
         for (const auto& ts : thread_stats) total += ts.cache_misses;
+        return total;
+    }
+    /** @return Penalización virtual de cambio asociada a misses, en ns. */
+    long long get_stall_time_ns() const override {
+        long long total = 0LL;
+        for (const auto& ts : thread_stats) total += ts.stall_time_ns;
+        return total;
+    }
+    /** @return Suma de costos de cambio de contexto inducidos por misses. */
+    long long get_context_switch_time_ns() const override {
+        long long total = 0LL;
+        for (const auto& ts : thread_stats) total += ts.context_switch_time_ns;
+        return total;
+    }
+    /** @return Transferencias reales entre contextos simulados. */
+    int get_context_switches() const override {
+        int total = 0;
+        for (const auto& ts : thread_stats) total += ts.context_switches;
         return total;
     }
 };

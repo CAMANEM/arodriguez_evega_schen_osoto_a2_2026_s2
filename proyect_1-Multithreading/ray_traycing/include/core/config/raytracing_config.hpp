@@ -5,9 +5,11 @@
 #ifndef RAYTRACING_CONFIG_HPP
 #define RAYTRACING_CONFIG_HPP
 
-#include "Vector3.h"
+#include "core/geometry/Vector3.h"
 #include <algorithm>
 #include <array>
+#include <limits>
+#include <stdexcept>
 #include <string>
 #include <thread>
 
@@ -20,13 +22,23 @@ struct SphereConfig {
     Vector3 color;
 };
 
-/** @brief Resolución horizontal del frame, en píxeles. */
-inline constexpr int IMAGE_WIDTH = 240;
-/** @brief Resolución vertical del frame, en píxeles. */
-inline constexpr int IMAGE_HEIGHT = 160;
-/** @brief Cantidad de frames de animación usada por clientes que la requieran. */
-inline constexpr int NUM_FRAMES = 200;
+/** @brief Resolución horizontal predeterminada del frame, en píxeles. */
+inline int IMAGE_WIDTH = 240;
+/** @brief Resolución vertical predeterminada del frame, en píxeles. */
+inline int IMAGE_HEIGHT = 160;
 
+/**
+ * @brief Configura la resolución activa del frame.
+ * @throws std::invalid_argument Si las dimensiones no son positivas o el área excede int.
+ */
+inline void set_image_dimensions(int width, int height) {
+    if (width < 1 || height < 1 ||
+        static_cast<long long>(width) * height > std::numeric_limits<int>::max())
+        throw std::invalid_argument(
+            "image dimensions must be positive and their product must fit in an int");
+    IMAGE_WIDTH = width;
+    IMAGE_HEIGHT = height;
+}
 /**
  * @brief Tres esferas sobre X: roja a la izquierda, verde al centro y azul a la derecha.
  * @details La esfera verde está centrada en SCENE_CENTER y cada esfera tiene radio distinto.
@@ -58,13 +70,10 @@ inline constexpr int CAMERA_ORBIT_FRAME_COUNT = 72;
 inline constexpr int CAMERA_ORBIT_FRAME_DELAY_MS = 50;
 
 /** @brief Rutas de resultados y recursos, relativas al directorio de ejecución. */
-inline const std::string GIF_FRAMES_DIR = "data/gif_frames";
 inline const std::string CAMERA_ORBIT_FRAMES_DIR = "data/camera_orbit_frames";
 inline const std::string CAMERA_ORBIT_GIF_PATH = "data/camera_orbit.gif";
 inline const std::string CAMERA_ORBIT_GIF_SCRIPT = "scripts/create_camera_gif.py";
 inline const std::string RESULTS_DIR = "data";
-inline const std::string IMAGE_DIR = "data/image";
-inline const std::string GRAPHS_DIR = "data/graficas";
 inline const std::string IMAGE_FILE_SEQUENTIAL = "data/image/frame_secuencial.ppm";
 inline const std::string IMAGE_FILE_FGMT = "data/image/frame_fgmt.ppm";
 inline const std::string IMAGE_FILE_CGMT = "data/image/frame_cgmt.ppm";
@@ -76,7 +85,7 @@ inline const std::string CSV_FILE_CGMT = "data/mediciones_cgmt.csv";
 inline const std::string CSV_FILE_SMT = "data/mediciones_smt.csv";
 inline const std::string CSV_FILE_CMP = "data/mediciones_cmp.csv";
 
-/** @brief Cantidad fija de contextos de los modelos FGMT y CGMT. */
+/** @brief Cantidad predeterminada de contextos FGMT y CGMT. */
 inline constexpr int NUM_THREADS = 4;
 /** @brief Tamaño de caché simulado por contexto, en bytes. */
 inline constexpr int CACHE_SIZE = 256;
@@ -95,7 +104,7 @@ inline constexpr long long CONTEXT_SWITCH_COST_NS = 400LL;
 inline constexpr unsigned int SMT_OVERSUBSCRIPTION_FACTOR = 2;
 /** @brief Slots que puede emitir el simulador SMT en un ciclo. */
 inline constexpr int SMT_ISSUE_WIDTH = 2;
-/** @brief Cantidad de workers reales usada por el modelo CMP. */
+/** @brief Cantidad predeterminada de workers reales usada por CMP. */
 inline constexpr int CMP_NUM_CORES = 4;
 
 /**

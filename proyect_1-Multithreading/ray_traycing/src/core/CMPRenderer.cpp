@@ -2,40 +2,40 @@
  * @file CMPRenderer.cpp
  * @brief Ejecución CMP con un hilo del SO por tile independiente.
  */
-#include "CMPRenderer.h"
-#include "raytracing_config.hpp"
-#include "Ray.h"
-#include "RendererUtils.h"
-#include "Workload.h"
+#include "core/strategies/CMPRenderer.h"
+#include "core/config/raytracing_config.hpp"
+#include "core/utils/RendererUtils.h"
 #include <algorithm>
+#include <cstdint>
 #include <thread>
 
 using namespace constants;
 using namespace trace;
 
 /** @brief Divide el frame en cores y crea una caché simulada por worker. */
-CMPRenderer::CMPRenderer()
-    : frame_(IMAGE_WIDTH * IMAGE_HEIGHT)
+CMPRenderer::CMPRenderer(int workers)
+    : worker_count_(validated_worker_count(workers, IMAGE_WIDTH * IMAGE_HEIGHT)),
+      frame_(IMAGE_WIDTH * IMAGE_HEIGHT)
 {
     const int total_pixels = IMAGE_WIDTH * IMAGE_HEIGHT;
-    const int pixels_per_core = total_pixels / CMP_NUM_CORES;
+    const int pixels_per_core = total_pixels / worker_count_;
 
-    tiles_.resize(CMP_NUM_CORES);
-    for (int i = 0; i < CMP_NUM_CORES; ++i) {
+    tiles_.resize(worker_count_);
+    for (int i = 0; i < worker_count_; ++i) {
         tiles_[i].start   = i * pixels_per_core;
-        tiles_[i].end     = (i == CMP_NUM_CORES - 1) ? total_pixels
+        tiles_[i].end     = (i == worker_count_ - 1) ? total_pixels
                                                        : (i + 1) * pixels_per_core;
         tiles_[i].core_id = i;
     }
 
     // CacheModel independiente por núcleo: semilla diferenciada para que cada
     // core tenga su propio patrón de misses (cachés L1 físicamente separadas).
-    cache_models_.resize(CMP_NUM_CORES);
-    for (int i = 0; i < CMP_NUM_CORES; ++i)
-        cache_models_[i] = CacheModel(CACHE_SIZE, 42u + static_cast<uint32_t>(i));
+    cache_models_.resize(worker_count_);
+    for (int i = 0; i < worker_count_; ++i)
+        cache_models_[i] = CacheModel(CACHE_SIZE, 42u + static_cast<std::uint32_t>(i));
 
-    core_stats_.resize(CMP_NUM_CORES);
-    for (int i = 0; i < CMP_NUM_CORES; ++i)
+    core_stats_.resize(worker_count_);
+    for (int i = 0; i < worker_count_; ++i)
         core_stats_[i].thread_id = i;
 }
 
@@ -63,7 +63,7 @@ void CMPRenderer::render_core_worker(int core_id) {
         const int y = idx / IMAGE_WIDTH;
 
         // Computar el píxel (ray tracing)
-        frame_[idx] = compute_pixel(scene, x, y, camera_pos_, workload_);
+        frame_[idx] = pixel_kernel_.compute(x, y);
 
         // Quantum base: un ciclo de pipeline productivo
         stats.virtual_time_ns += PIXEL_QUANTUM_NS;
@@ -74,8 +74,10 @@ void CMPRenderer::render_core_worker(int core_id) {
             // El núcleo queda idle hasta que el dato regresa de DRAM.
             // Costo idéntico al modelo Sequential pero solo sobre 1/N del frame.
             stats.virtual_time_ns += CACHE_MISS_PENALTY_NS;
+            stats.stall_time_ns += CACHE_MISS_PENALTY_NS;
             stats.cache_misses++;
             logger_.log_stall(local_cycle, core_id, x, y, CACHE_MISS_PENALTY_NS, "no ctx switch");
+            wait_for_stall_wall_time(CACHE_MISS_PENALTY_NS);
         }
 
         ++local_cycle;
@@ -91,13 +93,13 @@ std::vector<Vector3> CMPRenderer::render_frame() {
     // Resetear estadísticas y caches de todos los núcleos (DRY: misma lógica que FGMT/CGMT)
     trace::reset_thread_stats(core_stats_, cache_models_);
 
-    logger_.log_header("cmp", CMP_NUM_CORES, 1, PIXEL_QUANTUM_NS, CACHE_MISS_PENALTY_NS);
+    logger_.log_header("cmp", worker_count_, 1, PIXEL_QUANTUM_NS, CACHE_MISS_PENALTY_NS);
 
-    // Lanzar CMP_NUM_CORES OS threads: cada uno corre en un core físico distinto.
+    // Lanzar un OS thread por worker CMP.
     // No hay sincronización inter-nucleo durante la ejecución — independencia total.
     std::vector<std::thread> threads;
-    threads.reserve(CMP_NUM_CORES);
-    for (int i = 0; i < CMP_NUM_CORES; ++i)
+    threads.reserve(static_cast<std::size_t>(worker_count_));
+    for (int i = 0; i < worker_count_; ++i)
         threads.emplace_back(&CMPRenderer::render_core_worker, this, i);
 
     // Esperar a que todos los núcleos completen su tile
