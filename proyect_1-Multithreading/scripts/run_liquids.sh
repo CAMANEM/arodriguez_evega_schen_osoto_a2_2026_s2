@@ -5,6 +5,7 @@
 #   ./scripts/run_liquids.sh build
 #   ./scripts/run_liquids.sh test
 #   ./scripts/run_liquids.sh benchmark
+#   ./scripts/run_liquids.sh campaign
 #   ./scripts/run_liquids.sh all
 
 set -euo pipefail
@@ -52,7 +53,7 @@ run_benchmark() {
     cd "${REPO_ROOT}"
     "${benchmark}" --model all --particles 1000 --steps 10 \
       --threads 4 --quantum 8 --chunk 64 --smt-factor 2 --runs 5 \
-      --output proyect_1-Multithreading/liquids/data/benchmark.csv
+    --output proyect_1-Multithreading/liquids/data/benchmark.csv
   )
 }
 
@@ -69,13 +70,16 @@ case "${MODE}" in
     run_tests
     run_benchmark
     ;;
+  campaign)
+    "${SCRIPT_DIR}/campaign_liquids.sh"
+    ;;
   all)
     configure_and_build
     run_tests
     run_benchmark
     ;;
   *)
-    printf 'Usage: %s [build|test|benchmark|all]\n' "$0" >&2
+    printf 'Usage: %s [build|test|benchmark|campaign|all]\n' "$0" >&2
     exit 1
     ;;
 esac

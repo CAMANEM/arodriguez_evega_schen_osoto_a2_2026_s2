@@ -71,3 +71,35 @@ From the repository root:
 
 The sweep varies coarse-grained real-thread counts and also runs SMT and CMP.
 The scripts require CMake and a C++17 compiler on the target machine.
+
+The benchmark writes summary statistics by model and stage. Pass
+`--raw-output PATH` to also write one row per repetition and stage, including
+the run index, requested threads, effective workers, and execution parameters.
+The campaign scripts use this raw output for reproducible measurements:
+
+```text
+particles: 100, 1000, 10000
+workers:   2, 4, 8
+models:    sequential, fine, coarse, smt, cmp
+runs:      200
+steps:     10
+```
+
+Run the campaign on Linux/macOS with:
+
+```bash
+./proyect_1-Multithreading/scripts/campaign_liquids.sh
+./proyect_1-Multithreading/scripts/campaign_liquids.sh 200 10 results/liquids
+```
+
+On Windows PowerShell:
+
+```powershell
+./proyect_1-Multithreading/scripts/campaign_liquids.ps1
+./proyect_1-Multithreading/scripts/campaign_liquids.ps1 -Runs 200 -Steps 10 -OutputDir results/liquids
+```
+
+Each campaign directory contains a `manifest.csv`, one summary CSV, and one
+raw CSV per particle/worker combination. Generated campaign data should stay
+outside commits unless it is intentionally published as an experiment
+artifact.

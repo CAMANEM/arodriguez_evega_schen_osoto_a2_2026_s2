@@ -114,6 +114,8 @@ SphCliOptions parseSphCli(int argc, char* argv[]) {
             }
         } else if (argument == "--output") {
             options.output = requireValue(index, argc, argv);
+        } else if (argument == "--raw-output") {
+            options.rawOutput = requireValue(index, argc, argv);
         } else {
             throw std::invalid_argument("unknown argument: " + argument);
         }
@@ -136,5 +138,6 @@ void printSphCliHelp() {
         << "  --dt VALUE                Timestep duration (default: 0.001)\n"
         << "  --smoothing-length VALUE  SPH smoothing length (default: 0.04)\n"
         << "  --output CSV              Output CSV path\n"
+        << "  --raw-output CSV          Per-run and per-stage CSV path\n"
         << "  --help                    Show this help\n";
 }

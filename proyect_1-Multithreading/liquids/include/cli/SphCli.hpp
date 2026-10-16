@@ -18,6 +18,7 @@ struct SphCliOptions {
     double deltaTime = 0.001;
     double smoothingLength = 0.04;
     std::string output = "data/liquids_benchmark.csv";
+    std::string rawOutput;
 };
 
 SphCliOptions parseSphCli(int argc, char* argv[]);
