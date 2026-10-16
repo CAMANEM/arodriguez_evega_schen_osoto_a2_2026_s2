@@ -24,6 +24,14 @@ struct StageSamples {
     std::map<SphStage, metrics_interface> stages;
 };
 
+struct RawSample {
+    std::string model;
+    std::string stage;
+    int run = 0;
+    int effectiveWorkers = 1;
+    double seconds = 0.0;
+};
+
 SphConfig makeConfig(const SphCliOptions& options, execution_model model) {
     const int threadCount =
         model == execution_model::sequential ? 1 : options.threads;
@@ -34,7 +42,8 @@ SphConfig makeConfig(const SphCliOptions& options, execution_model model) {
 
 StageSamples runModel(const std::string& modelName,
                       const SphCliOptions& options,
-                      const SphConfig& config) {
+                      const SphConfig& config,
+                      std::vector<RawSample>* rawSamples) {
     StageSamples samples{
         metrics_interface(parseSphModel(modelName), options.threads), {}};
 
@@ -45,6 +54,11 @@ StageSamples runModel(const std::string& modelName,
         const SphMetrics metrics = scheme->simulate(fluid, config);
         samples.total.set_n_workers(metrics.get_n_workers());
         samples.total.record_time(metrics.getStageMetrics().totalWallSeconds);
+        if (rawSamples != nullptr) {
+            rawSamples->push_back(
+                {modelName, "total", run, metrics.get_n_workers(),
+                 metrics.getStageMetrics().totalWallSeconds});
+        }
         for (const SphStageMetrics& stage : metrics.getStageMetrics().perStage) {
             auto found = samples.stages.find(stage.stage);
             if (found == samples.stages.end()) {
@@ -54,6 +68,11 @@ StageSamples runModel(const std::string& modelName,
                                        metrics.get_n_workers())).first;
             }
             found->second.record_time(stage.wallSeconds);
+            if (rawSamples != nullptr) {
+                rawSamples->push_back(
+                    {modelName, sphStageName(stage.stage), run,
+                     metrics.get_n_workers(), stage.wallSeconds});
+            }
         }
     }
     return samples;
@@ -102,6 +121,32 @@ void writeCsv(const std::string& path, const SphCliOptions& options,
     }
 }
 
+void writeRawCsv(const std::string& path, const SphCliOptions& options,
+                 const std::vector<RawSample>& samples) {
+    if (path.empty()) {
+        return;
+    }
+    const std::filesystem::path output(path);
+    if (output.has_parent_path()) {
+        std::filesystem::create_directories(output.parent_path());
+    }
+    std::ofstream file(path);
+    if (!file) {
+        throw std::runtime_error("could not open raw CSV output: " + path);
+    }
+    file << "model,stage,run_index,particles,steps,requested_threads,"
+            "effective_workers,quantum,chunk,"
+            "smt_factor,seed,seconds\n";
+    for (const RawSample& sample : samples) {
+        file << sample.model << ',' << sample.stage << ',' << sample.run << ','
+             << options.particles << ',' << options.steps << ','
+             << options.threads << ',' << sample.effectiveWorkers << ','
+             << options.quantum << ',' << options.chunk << ','
+             << options.smtFactor << ',' << options.seed << ','
+             << std::setprecision(12) << sample.seconds << '\n';
+    }
+}
+
 } // namespace
 
 int main(int argc, char* argv[]) {
@@ -113,8 +158,9 @@ int main(int argc, char* argv[]) {
 
         const SphConfig baselineConfig =
             makeConfig(options, execution_model::sequential);
+        std::vector<RawSample> rawSamples;
         const StageSamples baseline =
-            runModel("sequential", options, baselineConfig);
+            runModel("sequential", options, baselineConfig, &rawSamples);
 
         std::vector<std::pair<std::string, StageSamples>> results;
         for (const std::string& model : selected) {
@@ -122,12 +168,14 @@ int main(int argc, char* argv[]) {
             const SphConfig config = makeConfig(options, executionModel);
             StageSamples samples = model == "sequential"
                                        ? baseline
-                                       : runModel(model, options, config);
+                                       : runModel(model, options, config,
+                                                  &rawSamples);
             setBaseline(samples, baseline);
             results.emplace_back(model, std::move(samples));
         }
 
         writeCsv(options.output, options, results);
+        writeRawCsv(options.rawOutput, options, rawSamples);
         std::cout << "SPH benchmark completed\n"
                   << "models: " << options.model << "\n"
                   << "runs: " << options.runs << "\n"

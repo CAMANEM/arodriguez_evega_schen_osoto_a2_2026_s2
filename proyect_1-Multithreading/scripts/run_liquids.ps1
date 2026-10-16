@@ -1,5 +1,5 @@
 param(
-    [ValidateSet("build", "test", "benchmark", "all")]
+    [ValidateSet("build", "test", "benchmark", "campaign", "all")]
     [string]$Mode = "benchmark"
 )
 
@@ -40,6 +40,10 @@ switch ($Mode) {
         & $Benchmark --model all --particles 1000 --steps 10 `
             --threads 4 --quantum 8 --chunk 64 --smt-factor 2 --runs 5 `
             --output $Output
+    }
+    "campaign" {
+        $Campaign = Join-Path $PSScriptRoot "campaign_liquids.ps1"
+        & $Campaign
     }
     "all" {
         Invoke-Build
