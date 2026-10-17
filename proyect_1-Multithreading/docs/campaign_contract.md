@@ -131,9 +131,23 @@ RUNS=2 WARMUP=1 WORKLOADS=100 WORKERS=2 ./proyect_1-Multithreading/scripts/campa
 
 - Runs=200, Warmup=5, Steps=10
 - Workloads=`100,1000,10000`, Workers=`2,4,8`
-- Models=`all` (N-Body: one process per model, then merged)
+- Models: `sequential` once per workload; `fine|coarse|smt|cmp` per worker
 
 Optional filters: `-Problems boids,liquids` / `PROBLEMS=boids,liquids`.
+Reuse binaries without rebuild: `-SkipBuild` / `SKIP_BUILD=1`.
+
+### Sequential once per workload
+
+Sequential wall time does not depend on `--workers` (always 1 worker). The
+campaign therefore:
+
+1. Runs `--model sequential` **once** per `(problem, workload)` with `workers=1`.
+2. Replicates those summary/raw rows into every `n_<N>_w_<W>_*.csv` cell for that
+   workload.
+3. Runs only `fine`, `coarse`, `smt`, and `cmp` for each worker value.
+
+This keeps CSVs comparable across workers without paying sequential cost
+`× |Workers|`.
 
 ### Output layout
 
@@ -143,10 +157,11 @@ proyect_1-Multithreading/data/campaign/<timestamp>/
   campaign_summary_all.csv   # leading column: problem
   campaign_raw_all.csv       # leading column: problem
   boids|liquids|ray|nbody/
-    n_<N>_w_<W>_summary.csv
+    n_<N>_sequential_summary.csv   # measured once
+    n_<N>_sequential_raw.csv
+    n_<N>_w_<W>_summary.csv        # sequential rows + parallel models
     n_<N>_w_<W>_raw.csv
 ```
 
 Ray workload mapping used by the script: `100→160×120`, `1000→240×160`,
-`10000→480×320` (`--width` / `--height`). N-Body does not accept `--model all`;
-the script loops `sequential|fine|coarse|smt|cmp` and concatenates cell CSVs.
+`10000→480×320` (`--width` / `--height`).

@@ -2,9 +2,12 @@
 # Build the unified multithreading tree and run a comparable campaign across
 # Boids, Liquids, Ray Tracing, and N-Body.
 #
+# Sequential is measured once per workload (workers=1) and those rows are
+# replicated into every worker cell for that workload.
+#
 # Usage examples:
 #   ./scripts/campaign_all.sh
-#   RUNS=2 WARMUP=1 WORKLOADS=100 WORKERS=2 ./scripts/campaign_all.sh
+#   RUNS=2 WARMUP=1 WORKLOADS=100 WORKERS=2,4 SKIP_BUILD=1 ./scripts/campaign_all.sh
 #   PROBLEMS=boids,liquids ./scripts/campaign_all.sh
 
 set -euo pipefail
@@ -78,7 +81,6 @@ find_exe() {
     "${BUILD_DIR}/n_body/${name}.exe" \
     "${BUILD_DIR}/n_body/Release/${name}.exe"
   do
-    # Prefer regular files: ${BUILD_DIR}/n_body is a directory, not the binary.
     if [[ -f "${cand}" ]]; then
       printf '%s\n' "${cand}"
       return 0
@@ -100,8 +102,6 @@ ray_resolution() {
   esac
 }
 
-# Prepend problem column and append into merged CSV.
-# Args: source_csv problem dest_csv header_flag_varname
 merge_csv_with_problem() {
   local source="$1"
   local problem="$2"
@@ -118,6 +118,67 @@ merge_csv_with_problem() {
     [[ -z "${line}" ]] && continue
     printf '%s,%s\n' "${problem}" "${line}"
   done >> "${dest}"
+}
+
+# Concatenate CSVs: header from first file, then all data rows.
+merge_csv_files() {
+  local dest="$1"
+  shift
+  local header_written=0
+  local src
+  for src in "$@"; do
+    [[ -f "${src}" ]] || continue
+    if [[ "${header_written}" -eq 0 ]]; then
+      head -n 1 "${src}" > "${dest}"
+      header_written=1
+    fi
+    tail -n +2 "${src}" >> "${dest}"
+  done
+  [[ "${header_written}" -eq 1 ]] || die "merge_csv_files: no sources for ${dest}"
+}
+
+# Run one model for a problem into summary/raw paths.
+# Args: problem exe model N W summary raw
+invoke_campaign_model() {
+  local problem="$1"
+  local exe="$2"
+  local model="$3"
+  local n="$4"
+  local w="$5"
+  local summary="$6"
+  local raw="$7"
+
+  case "${problem}" in
+    boids)
+      "${exe}" --model "${model}" --boids "${n}" --steps "${STEPS}" --workers "${w}" \
+        --smt-factor "${SMT_FACTOR}" --runs "${RUNS}" --warmup "${WARMUP}" \
+        --seed "${SEED}" --output "${summary}" --raw-output "${raw}"
+      ;;
+    liquids)
+      "${exe}" --model "${model}" --particles "${n}" --steps "${STEPS}" --workers "${w}" \
+        --quantum "${QUANTUM}" --chunk 64 --smt-factor "${SMT_FACTOR}" \
+        --runs "${RUNS}" --warmup "${WARMUP}" --seed "${SEED}" \
+        --output "${summary}" --raw-output "${raw}"
+      ;;
+    ray)
+      local width height
+      read -r width height < <(ray_resolution "${n}")
+      "${exe}" --model "${model}" --runs "${RUNS}" --warmup "${WARMUP}" --workers "${w}" \
+        --width "${width}" --height "${height}" --seed "${SEED}" \
+        --smt-factor "${SMT_FACTOR}" --quantum "${QUANTUM}" \
+        --output "${summary}" --raw-output "${raw}"
+      ;;
+    nbody)
+      local legacy="${summary%_summary.csv}_legacy.csv"
+      "${exe}" -headless --model "${model}" -n "${n}" --steps "${STEPS}" \
+        --runs "${RUNS}" --warmup "${WARMUP}" --workers "${w}" \
+        --smt-factor "${SMT_FACTOR}" --seed "${SEED}" \
+        --output "${summary}" --raw-output "${raw}" -o "${legacy}"
+      ;;
+    *)
+      die "Unknown problem: ${problem}"
+      ;;
+  esac
 }
 
 if [[ "${SKIP_BUILD}" != "1" ]]; then
@@ -163,71 +224,61 @@ if has_problem nbody; then
   BIN_NBODY="$(find_exe n_body)" || die "n_body not found under ${BUILD_DIR} (Raylib required)"
 fi
 
+bin_for_problem() {
+  case "$1" in
+    boids) printf '%s\n' "${BIN_BOIDS}" ;;
+    liquids) printf '%s\n' "${BIN_LIQUIDS}" ;;
+    ray) printf '%s\n' "${BIN_RAY}" ;;
+    nbody) printf '%s\n' "${BIN_NBODY}" ;;
+  esac
+}
+
 summary_header_written=0
 raw_header_written=0
-NBODY_MODELS=(sequential fine coarse smt cmp)
+PARALLEL_MODELS=(fine coarse smt cmp)
 
 for problem in boids liquids ray nbody; do
   has_problem "${problem}" || continue
   problem_dir="${OUTPUT_DIR}/${problem}"
   mkdir -p "${problem_dir}"
+  exe="$(bin_for_problem "${problem}")"
 
   for N in "${WORKLOAD_ARR[@]}"; do
+    seq_prefix="${problem_dir}/n_${N}_sequential"
+    seq_summary="${seq_prefix}_summary.csv"
+    seq_raw="${seq_prefix}_raw.csv"
+    info "${problem} workload=${N} model=sequential (once, workers=1) runs=${RUNS} warmup=${WARMUP}"
+    invoke_campaign_model "${problem}" "${exe}" sequential "${N}" 1 \
+      "${seq_summary}" "${seq_raw}"
+
     for W in "${WORKER_ARR[@]}"; do
       prefix="${problem_dir}/n_${N}_w_${W}"
       summary="${prefix}_summary.csv"
       raw="${prefix}_raw.csv"
-      info "${problem} workload=${N} workers=${W} runs=${RUNS} warmup=${WARMUP} steps=${STEPS}"
 
-      case "${problem}" in
-        boids)
-          "${BIN_BOIDS}" --model all --boids "${N}" --steps "${STEPS}" --workers "${W}" \
-            --smt-factor "${SMT_FACTOR}" --runs "${RUNS}" --warmup "${WARMUP}" \
-            --seed "${SEED}" --output "${summary}" --raw-output "${raw}"
-          ;;
-        liquids)
-          "${BIN_LIQUIDS}" --model all --particles "${N}" --steps "${STEPS}" --workers "${W}" \
-            --quantum "${QUANTUM}" --chunk 64 --smt-factor "${SMT_FACTOR}" \
-            --runs "${RUNS}" --warmup "${WARMUP}" --seed "${SEED}" \
-            --output "${summary}" --raw-output "${raw}"
-          ;;
-        ray)
-          read -r width height < <(ray_resolution "${N}")
-          "${BIN_RAY}" --model all --runs "${RUNS}" --warmup "${WARMUP}" --workers "${W}" \
-            --width "${width}" --height "${height}" --seed "${SEED}" \
-            --smt-factor "${SMT_FACTOR}" --quantum "${QUANTUM}" \
-            --output "${summary}" --raw-output "${raw}"
-          ;;
-        nbody)
-          : > "${summary}.parts"
-          : > "${raw}.parts"
-          first_summary=1
-          first_raw=1
-          for model in "${NBODY_MODELS[@]}"; do
-            ms="${prefix}_${model}_summary.csv"
-            mr="${prefix}_${model}_raw.csv"
-            legacy="${prefix}_${model}_legacy.csv"
-            "${BIN_NBODY}" -headless --model "${model}" -n "${N}" --steps "${STEPS}" \
-              --runs "${RUNS}" --warmup "${WARMUP}" --workers "${W}" \
-              --smt-factor "${SMT_FACTOR}" --seed "${SEED}" \
-              --output "${ms}" --raw-output "${mr}" -o "${legacy}"
-            if [[ "${first_summary}" -eq 1 ]]; then
-              head -n 1 "${ms}" > "${summary}"
-              first_summary=0
-            fi
-            tail -n +2 "${ms}" >> "${summary}"
-            if [[ "${first_raw}" -eq 1 ]]; then
-              head -n 1 "${mr}" > "${raw}"
-              first_raw=0
-            fi
-            tail -n +2 "${mr}" >> "${raw}"
-          done
-          rm -f "${summary}.parts" "${raw}.parts"
-          ;;
-      esac
+      part_summaries=("${seq_summary}")
+      part_raws=()
+      [[ -f "${seq_raw}" ]] && part_raws+=("${seq_raw}")
+
+      for model in "${PARALLEL_MODELS[@]}"; do
+        info "${problem} workload=${N} workers=${W} model=${model} runs=${RUNS} warmup=${WARMUP}"
+        ms="${prefix}_${model}_summary.csv"
+        mr="${prefix}_${model}_raw.csv"
+        invoke_campaign_model "${problem}" "${exe}" "${model}" "${N}" "${W}" \
+          "${ms}" "${mr}"
+        part_summaries+=("${ms}")
+        [[ -f "${mr}" ]] && part_raws+=("${mr}")
+      done
+
+      merge_csv_files "${summary}" "${part_summaries[@]}"
+      if [[ "${#part_raws[@]}" -gt 0 ]]; then
+        merge_csv_files "${raw}" "${part_raws[@]}"
+      fi
 
       merge_csv_with_problem "${summary}" "${problem}" "${SUMMARY_ALL}" summary_header_written
-      merge_csv_with_problem "${raw}" "${problem}" "${RAW_ALL}" raw_header_written
+      if [[ -f "${raw}" ]]; then
+        merge_csv_with_problem "${raw}" "${problem}" "${RAW_ALL}" raw_header_written
+      fi
       printf '%s,%s,%s,%s,%s\n' "${problem}" "${N}" "${W}" "${summary}" "${raw}" \
         >> "${MANIFEST}"
     done
