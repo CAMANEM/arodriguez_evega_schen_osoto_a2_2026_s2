@@ -28,7 +28,8 @@ SMTRenderer::SMTRenderer(int contexts)
     // Semilla determinista por contexto: 42+id garantiza reproducibilidad
     cache_models_.resize(context_count);
     for (int i = 0; i < context_count; ++i)
-        cache_models_[i] = CacheModel(CACHE_SIZE, 42u + static_cast<std::uint32_t>(i));
+        cache_models_[i] = CacheModel(
+            CACHE_SIZE, CACHE_SEED_BASE + static_cast<std::uint32_t>(i));
 
     thread_stats_.resize(context_count);
     for (int i = 0; i < context_count; ++i)

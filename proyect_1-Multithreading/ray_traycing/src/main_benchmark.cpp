@@ -8,13 +8,14 @@
 #include "metrics_interface.hpp"
 #include "core/camera/CameraOrbit.h"
 #include "core/utils/Timer.hpp"
+#include <cmath>
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <iterator>
 #include <memory>
-#include <cmath>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -114,23 +115,46 @@ static double speedup_ci_half_width(const SummaryStats& sequential,
 static std::vector<ModelConfig> make_models() {
 	return {
 		{"sequential", execution_model::sequential, 1},
-		{"fgmt", execution_model::fine_grained, constants::NUM_THREADS},
-		{"cgmt", execution_model::coarse_grained, constants::NUM_THREADS},
+		{"fine", execution_model::fine_grained, constants::NUM_THREADS},
+		{"coarse", execution_model::coarse_grained, constants::NUM_THREADS},
 		{"smt", execution_model::smt, constants::smt_context_count()},
 		{"cmp", execution_model::cmp, constants::CMP_NUM_CORES}
 	};
 }
 
 /**
+ * @brief Normalizes CLI model aliases to campaign-canonical names.
+ * @param name CLI model identifier (fine|fgmt|coarse|cgmt|...).
+ * @return Canonical name used in CSV (fine|coarse|...).
+ */
+static std::string normalize_campaign_model(const std::string& name) {
+	if (name == "fgmt") return "fine";
+	if (name == "cgmt") return "coarse";
+	return name;
+}
+
+/**
+ * @brief Registry key expected by RendererFactory for a campaign model.
+ * @param campaign_name Canonical campaign model name.
+ * @return Factory key (fgmt for fine, cgmt for coarse).
+ */
+static std::string factory_model_name(const std::string& campaign_name) {
+	if (campaign_name == "fine") return "fgmt";
+	if (campaign_name == "coarse") return "cgmt";
+	return campaign_name;
+}
+
+/**
  * @brief Busca la configuración de un modelo registrado.
- * @param name Nombre CLI del modelo.
+ * @param name Nombre CLI del modelo (acepta aliases fgmt/cgmt).
  * @return Referencia a su configuración estática.
  * @throws std::invalid_argument Si el modelo no está registrado.
  */
 static const ModelConfig& find_model(const std::vector<ModelConfig>& configured_models,
 									 const std::string& name) {
+	const std::string canonical = normalize_campaign_model(name);
 	for (const ModelConfig& model : configured_models)
-		if (name == model.name) return model;
+		if (canonical == model.name) return model;
 	throw std::invalid_argument("unknown model: " + name);
 }
 
@@ -143,17 +167,19 @@ static int parse_positive_integer(const std::string& value, const char* option) 
 }
 
 /**
- * @brief Renderiza varias repeticiones de un modelo y recoge tiempos de pared.
+ * @brief Renderiza warmup (descartado) y runs medidos de un modelo.
  * @param config Modelo y cantidad de workers.
- * @param runs Número de repeticiones.
- * @param last_frame Si no es nulo, recibe el último frame producido.
- * @return Métricas de las muestras renderizadas, en segundos.
+ * @param warmup Discarded cold-start frames.
+ * @param runs Measured repetitions recorded in summary stats.
+ * @param frame_csv_path Optional raw/frame CSV path.
+ * @param write_frame_csv Whether to emit per-frame rows with phase column.
+ * @return Métricas de las muestras medidas, en segundos.
  */
-static BenchmarkMetrics run_model(const ModelConfig& config, int runs,
+static BenchmarkMetrics run_model(const ModelConfig& config, int warmup, int runs,
 								  const std::string& frame_csv_path,
 								  bool write_frame_csv) {
 	std::unique_ptr<IRenderer> renderer =
-		RendererFactory::create(config.name, config.workers);
+		RendererFactory::create(factory_model_name(config.name), config.workers);
 	renderer->set_camera_pos(constants::CAMERA_ORIGIN);
 	renderer->set_verbose(0);
 
@@ -165,19 +191,18 @@ static BenchmarkMetrics run_model(const ModelConfig& config, int runs,
 		frame_csv.open(frame_csv_path);
 		if (!frame_csv)
 			throw std::runtime_error("could not open frame metrics output: " + frame_csv_path);
-		frame_csv << "frame,model,n_workers,execution_time_s,virtual_time_ns,"
+		frame_csv << "frame,model,phase,n_workers,execution_time_s,virtual_time_ns,"
 					 "stall_time_ns,context_switch_time_ns,stall_count,context_switches\n";
 		frame_csv << std::setprecision(12);
 	}
 
-	BenchmarkMetrics metrics(config.model, config.workers);
-	for (int run = 0; run < runs; ++run) {
+	auto render_once = [&](int index, const char* phase) {
 		Timer timer;
 		timer.start();
 		renderer->render_frame();
 		const double execution_time_s = timer.stopAndGetMilliseconds() / 1000.0;
 		const BenchmarkMetrics::FrameSample sample{
-			run + 1,
+			index + 1,
 			execution_time_s,
 			renderer->get_virtual_time_ns(),
 			renderer->get_stall_time_ns(),
@@ -185,15 +210,25 @@ static BenchmarkMetrics run_model(const ModelConfig& config, int runs,
 			renderer->get_total_stalls(),
 			renderer->get_context_switches()
 		};
-		metrics.wall.record_time(sample.execution_time_s);
-		metrics.samples.push_back(sample);
 		if (write_frame_csv) {
-			frame_csv << sample.frame << ',' << config.name << ',' << config.workers << ','
+			frame_csv << sample.frame << ',' << config.name << ',' << phase << ','
+					  << config.workers << ','
 					  << sample.execution_time_s << ',' << sample.virtual_time_ns << ','
 					  << sample.stall_time_ns << ',' << sample.context_switch_time_ns << ','
 					  << sample.stall_count << ','
 					  << sample.context_switches << '\n';
 		}
+		return sample;
+	};
+
+	BenchmarkMetrics metrics(config.model, config.workers);
+	for (int run = 0; run < warmup; ++run)
+		(void)render_once(run, "warmup");
+	for (int run = 0; run < runs; ++run) {
+		const BenchmarkMetrics::FrameSample sample =
+			render_once(run, "measured");
+		metrics.wall.record_time(sample.execution_time_s);
+		metrics.samples.push_back(sample);
 	}
 	return metrics;
 }
@@ -210,9 +245,20 @@ static std::string frame_csv_path(const std::string& summary_path, const char* m
  * @param results Configuraciones y métricas que se exportan.
  * @throws std::runtime_error Si no se puede abrir el archivo.
  */
+/**
+ * @brief Writes campaign summary CSV (contract columns + ray-specific extras).
+ * @param path Output path; parent directories are created.
+ * @param results Model configs and measured metrics.
+ * @param sequential Baseline metrics for speedup CI.
+ * @param workload_n Pixel count used as workload_n.
+ * @param warmup Discarded warmup count recorded in the summary.
+ * @throws std::runtime_error If the file cannot be opened.
+ */
 static void write_csv(const std::string& path,
 					  const std::vector<std::pair<const ModelConfig*, BenchmarkMetrics>>& results,
-					  const BenchmarkMetrics& sequential) {
+					  const BenchmarkMetrics& sequential,
+					  int workload_n,
+					  int warmup) {
 	const std::filesystem::path output(path);
 	if (output.has_parent_path())
 		std::filesystem::create_directories(output.parent_path());
@@ -228,14 +274,11 @@ static void write_csv(const std::string& path,
 			return static_cast<double>(sample.virtual_time_ns);
 		});
 
-	file << "model,workload,n_workers,runs,mean_execution_time_s,stddev_execution_time_s,"
-			"ci95_execution_lower_s,ci95_execution_upper_s,speedup,speedup_ci95_lower,"
-			"speedup_ci95_upper,efficiency,mean_stall_time_ns,stddev_stall_time_ns,"
-			"ci95_stall_time_lower_ns,ci95_stall_time_upper_ns,"
-			"mean_context_switch_time_ns,stddev_context_switch_time_ns,"
-			"ci95_context_switch_time_lower_ns,ci95_context_switch_time_upper_ns,"
-			"mean_stall_count,"
-			"stddev_stall_count,mean_context_switches,stddev_context_switches,"
+	file << "model,workload_n,steps,effective_workers,quantum,smt_factor,seed,runs,warmup,"
+			"mean_s,stddev_s,ci95_lo,ci95_hi,speedup,efficiency,"
+			"speedup_ci95_lower,speedup_ci95_upper,"
+			"mean_stall_time_ns,stddev_stall_time_ns,"
+			"mean_context_switch_time_ns,mean_stall_count,mean_context_switches,"
 			"mean_virtual_time_ns,virtual_speedup\n";
 	for (const auto& result : results) {
 		const ModelConfig& config = *result.first;
@@ -266,18 +309,19 @@ static void write_csv(const std::string& path,
 		const double virtual_mean = benchmark.mean_virtual_time_ns();
 		const double virtual_speedup = sequential_virtual.mean > 0.0 && virtual_mean > 0.0
 			? sequential_virtual.mean / virtual_mean : 0.0;
-		file << config.name << ",raytracing,"
-			 << metrics.get_n_workers() << ',' << metrics.get_run_count() << ','
+		file << config.name << ',' << workload_n << ",1,"
+			 << metrics.get_n_workers() << ',' << constants::PIXEL_QUANTUM_NS << ','
+			 << constants::SMT_OVERSUBSCRIPTION_FACTOR << ','
+			 << constants::CACHE_SEED_BASE << ',' << metrics.get_run_count() << ','
+			 << warmup << ','
 			 << execution.mean << ',' << execution.stddev << ','
 			 << execution.ci_lower << ',' << execution.ci_upper << ','
-			 << speedup << ',' << speedup - speedup_half_width << ','
-			 << speedup + speedup_half_width << ',' << metrics.efficiency() << ','
+			 << speedup << ',' << metrics.efficiency() << ','
+			 << speedup - speedup_half_width << ','
+			 << speedup + speedup_half_width << ','
 			 << stall_time.mean << ',' << stall_time.stddev << ','
-			 << stall_time.ci_lower << ',' << stall_time.ci_upper << ','
-			 << context_switch_time.mean << ',' << context_switch_time.stddev << ','
-			 << context_switch_time.ci_lower << ',' << context_switch_time.ci_upper << ','
-			 << stall_count.mean << ',' << stall_count.stddev << ','
-			 << context_switches.mean << ',' << context_switches.stddev << ','
+			 << context_switch_time.mean << ','
+			 << stall_count.mean << ',' << context_switches.mean << ','
 			 << virtual_mean << ',' << virtual_speedup << '\n';
 	}
 }
@@ -291,6 +335,7 @@ static void write_csv(const std::string& path,
 int main(int argc, char* argv[]) {
 	try {
 		int runs = 200;
+		int warmup = 0;
 		int requested_workers = 0;
 		int image_width = constants::IMAGE_WIDTH;
 		int image_height = constants::IMAGE_HEIGHT;
@@ -302,27 +347,51 @@ int main(int argc, char* argv[]) {
 		for (int i = 1; i < argc; ++i) {
 			const std::string argument = argv[i];
 			if (argument == "--help" || argument == "-h") {
-				std::cout << "Usage: raytracing_benchmark [--model all|sequential|fgmt|cgmt|smt|cmp] "
-							 "[--runs N] [--workers N] [--width N] [--height N] "
-							 "[--output CSV] [--frame-csv] [--gif]\n"
-							 "--workers configures FGMT/CGMT/CMP workers and SMT virtual contexts; "
-							 "sequential remains one worker.\n"
-							 "--width and --height set the image dimensions (default: 240 x 160).\n";
+				std::cout << "Usage: raytracing_benchmark "
+							 "[--model all|sequential|fine|fgmt|coarse|cgmt|smt|cmp] "
+							 "[--runs N] [--warmup N] [--workers N|--threads N] "
+							 "[--width N] [--height N] [--seed N] [--smt-factor N] "
+							 "[--quantum N] [--output CSV] [--frame-csv] [--gif]\n"
+							 "--workers/--threads configures Fine/Coarse/CMP workers and SMT "
+							 "contexts; sequential remains one worker.\n"
+							 "--warmup discards cold-start frames before measured runs.\n"
+							 "--width/--height set image dimensions (default: 240 x 160).\n";
 				return 0;
 			} else if (argument == "--model" && i + 1 < argc) {
-				selected_model = argv[++i];
+				selected_model = normalize_campaign_model(argv[++i]);
 			} else if (argument == "--runs" && i + 1 < argc) {
 				runs = parse_positive_integer(argv[++i], "runs");
-			} else if (argument == "--workers" && i + 1 < argc) {
+			} else if (argument == "--warmup" && i + 1 < argc) {
+				warmup = std::stoi(argv[++i]);
+				if (warmup < 0)
+					throw std::invalid_argument("warmup must be >= 0");
+			} else if ((argument == "--workers" || argument == "--threads") &&
+					   i + 1 < argc) {
 				requested_workers = parse_positive_integer(argv[++i], "workers");
 			} else if (argument == "--width" && i + 1 < argc) {
 				image_width = parse_positive_integer(argv[++i], "width");
 			} else if (argument == "--height" && i + 1 < argc) {
 				image_height = parse_positive_integer(argv[++i], "height");
+			} else if (argument == "--seed" && i + 1 < argc) {
+				constants::set_cache_seed_base(
+					static_cast<std::uint32_t>(parse_positive_integer(argv[++i], "seed")));
+			} else if ((argument == "--smt-factor" || argument == "--oversubscribe") &&
+					   i + 1 < argc) {
+				constants::set_smt_oversubscription_factor(
+					static_cast<unsigned int>(
+						parse_positive_integer(argv[++i], "smt-factor")));
+			} else if (argument == "--quantum" && i + 1 < argc) {
+				constants::set_pixel_quantum_ns(
+					parse_positive_integer(argv[++i], "quantum"));
 			} else if (argument == "--output" && i + 1 < argc) {
 				output = argv[++i];
-			} else if (argument == "--frame-csv") {
+			} else if (argument == "--frame-csv" || argument == "--raw-output") {
 				write_frame_csv = true;
+				if (argument == "--raw-output" && i + 1 < argc &&
+					argv[i + 1][0] != '-') {
+					// Optional path ignored; frame CSVs stay beside --output.
+					++i;
+				}
 			} else if (argument == "--gif") {
 				generate_gif = true;
 			} else {
@@ -340,6 +409,10 @@ int main(int argc, char* argv[]) {
 			for (ModelConfig& config : configured_models)
 				if (config.model != execution_model::sequential)
 					config.workers = requested_workers;
+		} else {
+			for (ModelConfig& config : configured_models)
+				if (config.model == execution_model::smt)
+					config.workers = constants::smt_context_count();
 		}
 
 		std::vector<const ModelConfig*> selected;
@@ -353,7 +426,7 @@ int main(int argc, char* argv[]) {
 		const ModelConfig& sequential = configured_models[0];
 		const std::string sequential_csv = frame_csv_path(output, sequential.name);
 		BenchmarkMetrics baseline = run_model(
-			sequential, runs, sequential_csv, write_frame_csv);
+			sequential, warmup, runs, sequential_csv, write_frame_csv);
 		baseline.wall.set_sequential_time(baseline.wall.mean_time());
 		const double sequential_virtual_time_ns = baseline.mean_virtual_time_ns();
 
@@ -362,15 +435,16 @@ int main(int argc, char* argv[]) {
 			BenchmarkMetrics metrics = baseline;
 			if (config->model != execution_model::sequential) {
 				const std::string model_csv = frame_csv_path(output, config->name);
-				metrics = run_model(*config, runs, model_csv, write_frame_csv);
+				metrics = run_model(*config, warmup, runs, model_csv, write_frame_csv);
 			}
 			metrics.wall.set_sequential_time(baseline.wall.mean_time());
 			results.emplace_back(config, metrics);
 		}
 
-		write_csv(output, results, baseline);
+		write_csv(output, results, baseline, pixel_count, warmup);
 		std::cout << "Workload: raytracing | resolution: " << constants::IMAGE_WIDTH
-				  << 'x' << constants::IMAGE_HEIGHT << " | runs: " << runs << '\n';
+				  << 'x' << constants::IMAGE_HEIGHT
+				  << " | warmup: " << warmup << " | runs: " << runs << '\n';
 		std::cout << std::left << std::setw(14) << "model" << std::right
 				  << std::setw(14) << "wall (s)" << std::setw(12) << "wall-up"
 				  << std::setw(14) << "efficiency" << std::setw(18) << "virtual (ns)"

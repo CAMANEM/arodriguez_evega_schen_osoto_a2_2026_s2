@@ -36,7 +36,8 @@ FinegrainedRenderer::FinegrainedRenderer(int workers)
     // en cada ejecución (reproducibilidad). Se diferencia por thread_id para
     // evitar que todos los tiles compartan el mismo estado inicial del RNG.
     for (int i = 0; i < worker_count_; ++i)
-        cache_models[i] = CacheModel(CACHE_SIZE, 42u + static_cast<std::uint32_t>(i));
+        cache_models[i] = CacheModel(
+            CACHE_SIZE, CACHE_SEED_BASE + static_cast<std::uint32_t>(i));
 
     thread_stats.resize(worker_count_);
     for (int i = 0; i < worker_count_; ++i)

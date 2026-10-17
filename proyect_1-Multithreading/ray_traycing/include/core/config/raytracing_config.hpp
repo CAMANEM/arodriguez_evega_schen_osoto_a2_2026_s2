@@ -8,6 +8,7 @@
 #include "core/geometry/Vector3.h"
 #include <algorithm>
 #include <array>
+#include <cstdint>
 #include <limits>
 #include <stdexcept>
 #include <string>
@@ -93,19 +94,51 @@ inline constexpr int CACHE_SIZE = 256;
 inline constexpr int NOP_PENALTY_NS = 100;
 /** @brief Cantidad de NOP que representa un miss de caché. */
 inline constexpr int NOPS_PER_STALL = 32;
-/** @brief Quantum de ejecución por píxel, en nanosegundos virtuales. */
-inline constexpr long long PIXEL_QUANTUM_NS = 1000LL;
+/** @brief Quantum de ejecución por píxel, en nanosegundos virtuales (runtime). */
+inline long long PIXEL_QUANTUM_NS = 1000LL;
 /** @brief Latencia total de un miss sin ocultamiento. */
 inline constexpr long long CACHE_MISS_PENALTY_NS =
     static_cast<long long>(NOPS_PER_STALL) * NOP_PENALTY_NS;
 inline constexpr long long CONTEXT_SWITCH_COST_NS = 400LL;
 
-/** @brief Multiplicador de los procesadores lógicos para contextos SMT virtuales. */
-inline constexpr unsigned int SMT_OVERSUBSCRIPTION_FACTOR = 2;
+/** @brief Multiplicador de procesadores lógicos para contextos SMT virtuales. */
+inline unsigned int SMT_OVERSUBSCRIPTION_FACTOR = 2;
+/** @brief Base de semilla para CacheModel por contexto (seed + thread_id). */
+inline std::uint32_t CACHE_SEED_BASE = 42u;
 /** @brief Slots que puede emitir el simulador SMT en un ciclo. */
 inline constexpr int SMT_ISSUE_WIDTH = 2;
 /** @brief Cantidad predeterminada de workers reales usada por CMP. */
 inline constexpr int CMP_NUM_CORES = 4;
+
+/**
+ * @brief Sets the Fine/CGMT/SMT pixel quantum used by virtual-time accounting.
+ * @param quantum_ns Positive quantum in nanoseconds.
+ * @throws std::invalid_argument If quantum_ns is not positive.
+ */
+inline void set_pixel_quantum_ns(long long quantum_ns) {
+    if (quantum_ns < 1)
+        throw std::invalid_argument("pixel quantum must be a positive integer");
+    PIXEL_QUANTUM_NS = quantum_ns;
+}
+
+/**
+ * @brief Sets the SMT software oversubscription factor F (T = L × F).
+ * @param factor Positive oversubscription factor.
+ * @throws std::invalid_argument If factor is zero.
+ */
+inline void set_smt_oversubscription_factor(unsigned int factor) {
+    if (factor == 0)
+        throw std::invalid_argument("smt-factor must be positive");
+    SMT_OVERSUBSCRIPTION_FACTOR = factor;
+}
+
+/**
+ * @brief Sets the base RNG seed used when constructing per-context CacheModel.
+ * @param seed Base seed; each context uses seed + thread_id.
+ */
+inline void set_cache_seed_base(std::uint32_t seed) {
+    CACHE_SEED_BASE = seed;
+}
 
 /**
  * @brief Calcula los contextos SMT virtuales según el hardware disponible.

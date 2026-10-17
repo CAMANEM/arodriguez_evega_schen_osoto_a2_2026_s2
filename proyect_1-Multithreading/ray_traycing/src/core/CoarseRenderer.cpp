@@ -29,7 +29,8 @@ CoarseRenderer::CoarseRenderer(int workers)
     cache_models.resize(worker_count);
     // Semilla determinista por thread (ver CacheModel.h)
     for (int i = 0; i < worker_count; ++i)
-        cache_models[i] = CacheModel(CACHE_SIZE, 42u + static_cast<uint32_t>(i));
+        cache_models[i] = CacheModel(
+            CACHE_SIZE, CACHE_SEED_BASE + static_cast<uint32_t>(i));
 
     thread_done.resize(worker_count, false);
 
