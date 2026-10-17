@@ -10,9 +10,13 @@
   across problems. Merges summary/raw CSVs into campaign_summary_all.csv and
   campaign_raw_all.csv with a leading "problem" column.
 
+  Sequential is measured once per workload (workers=1) and those rows are
+  replicated into every worker cell for that workload, avoiding redundant
+  sequential runs while keeping CSVs comparable across workers.
+
 .EXAMPLE
   .\proyect_1-Multithreading\scripts\campaign_all.ps1 -Runs 2 -Warmup 1 -Workloads 100 -Workers 2
-  .\proyect_1-Multithreading\scripts\campaign_all.ps1 -Problems boids,liquids
+  .\proyect_1-Multithreading\scripts\campaign_all.ps1 -Problems boids,liquids -SkipBuild
 #>
 
 [CmdletBinding()]
@@ -159,6 +163,76 @@ function Merge-CsvWithProblem {
     }
 }
 
+# Concatenates CSV files: header from the first non-empty file, then all data rows.
+function Merge-CsvFiles {
+    param(
+        [string]$DestPath,
+        [string[]]$SourcePaths
+    )
+    $headerWritten = $false
+    foreach ($src in $SourcePaths) {
+        if (-not (Test-Path -LiteralPath $src)) { continue }
+        $lines = Get-Content -LiteralPath $src
+        if ($lines.Count -eq 0) { continue }
+        if (-not $headerWritten) {
+            Set-Content -LiteralPath $DestPath -Value $lines[0]
+            $headerWritten = $true
+        }
+        for ($i = 1; $i -lt $lines.Count; $i++) {
+            if ([string]::IsNullOrWhiteSpace($lines[$i])) { continue }
+            Add-Content -LiteralPath $DestPath -Value $lines[$i]
+        }
+    }
+    if (-not $headerWritten) {
+        throw "Merge-CsvFiles: no source CSVs found for $DestPath"
+    }
+}
+
+# Runs one campaign model for a problem into summary/raw paths.
+function Invoke-CampaignModel {
+    param(
+        [string]$Problem,
+        [string]$Exe,
+        [string]$Model,
+        [int]$N,
+        [int]$W,
+        [string]$SummaryPath,
+        [string]$RawPath
+    )
+    if ($Problem -eq "boids") {
+        & $Exe --model $Model --boids $N --steps $Steps --workers $W `
+            --smt-factor $SmtFactor --runs $Runs --warmup $Warmup `
+            --seed $Seed --output $SummaryPath --raw-output $RawPath
+        if ($LASTEXITCODE -ne 0) { throw "boids_benchmark ($Model) failed" }
+    }
+    elseif ($Problem -eq "liquids") {
+        & $Exe --model $Model --particles $N --steps $Steps --workers $W `
+            --quantum $Quantum --chunk 64 --smt-factor $SmtFactor `
+            --runs $Runs --warmup $Warmup --seed $Seed `
+            --output $SummaryPath --raw-output $RawPath
+        if ($LASTEXITCODE -ne 0) { throw "liquids_benchmark ($Model) failed" }
+    }
+    elseif ($Problem -eq "ray") {
+        $res = Get-RayResolution $N
+        & $Exe --model $Model --runs $Runs --warmup $Warmup --workers $W `
+            --width $res.Width --height $res.Height --seed $Seed `
+            --smt-factor $SmtFactor --quantum $Quantum `
+            --output $SummaryPath --raw-output $RawPath
+        if ($LASTEXITCODE -ne 0) { throw "raytracing_benchmark ($Model) failed" }
+    }
+    elseif ($Problem -eq "nbody") {
+        $legacy = ($SummaryPath -replace '_summary\.csv$', '_legacy.csv')
+        & $Exe -headless --model $Model -n $N --steps $Steps `
+            --runs $Runs --warmup $Warmup --workers $W `
+            --smt-factor $SmtFactor --seed $Seed `
+            --output $SummaryPath --raw-output $RawPath -o $legacy
+        if ($LASTEXITCODE -ne 0) { throw "n_body ($Model) failed" }
+    }
+    else {
+        throw "Unknown problem: $Problem"
+    }
+}
+
 function Invoke-UnifiedBuild {
     Refresh-Path
     $cmake = Find-CMake
@@ -232,7 +306,8 @@ if ($ProblemSet.ContainsKey("nbody")) {
 
 $summaryHeaderWritten = $false
 $rawHeaderWritten = $false
-$nbodyModels = @("sequential", "fine", "coarse", "smt", "cmp")
+# Parallel models re-run per worker; sequential is cached once per workload.
+$ParallelModels = @("fine", "coarse", "smt", "cmp")
 
 foreach ($problem in @("boids", "liquids", "ray", "nbody")) {
     if (-not $ProblemSet.ContainsKey($problem)) { continue }
@@ -241,79 +316,49 @@ foreach ($problem in @("boids", "liquids", "ray", "nbody")) {
     $exe = $bins[$problem]
 
     foreach ($N in $Workloads) {
+        # Sequential baseline: one measurement per workload (workers=1).
+        $seqPrefix = Join-Path $problemDir ("n_${N}_sequential")
+        $seqSummary = "${seqPrefix}_summary.csv"
+        $seqRaw = "${seqPrefix}_raw.csv"
+        Write-Info "$problem workload=$N model=sequential (once, workers=1) runs=$Runs warmup=$Warmup"
+        Invoke-CampaignModel -Problem $problem -Exe $exe -Model "sequential" `
+            -N $N -W 1 -SummaryPath $seqSummary -RawPath $seqRaw
+
         foreach ($W in $Workers) {
             $prefix = Join-Path $problemDir ("n_${N}_w_${W}")
             $summary = "${prefix}_summary.csv"
             $raw = "${prefix}_raw.csv"
-            Write-Info "$problem workload=$N workers=$W runs=$Runs warmup=$Warmup steps=$Steps"
+            # Cell CSV = replicated sequential rows + parallel models for this W.
+            $partSummaries = @($seqSummary)
+            $partRaws = @()
+            if (Test-Path -LiteralPath $seqRaw -PathType Leaf) {
+                $partRaws += $seqRaw
+            }
 
-            if ($problem -eq "boids") {
-                & $exe --model all --boids $N --steps $Steps --workers $W `
-                    --smt-factor $SmtFactor --runs $Runs --warmup $Warmup `
-                    --seed $Seed --output $summary --raw-output $raw
-                if ($LASTEXITCODE -ne 0) { throw "boids_benchmark failed" }
-            }
-            elseif ($problem -eq "liquids") {
-                & $exe --model all --particles $N --steps $Steps --workers $W `
-                    --quantum $Quantum --chunk 64 --smt-factor $SmtFactor `
-                    --runs $Runs --warmup $Warmup --seed $Seed `
-                    --output $summary --raw-output $raw
-                if ($LASTEXITCODE -ne 0) { throw "liquids_benchmark failed" }
-            }
-            elseif ($problem -eq "ray") {
-                $res = Get-RayResolution $N
-                & $exe --model all --runs $Runs --warmup $Warmup --workers $W `
-                    --width $res.Width --height $res.Height --seed $Seed `
-                    --smt-factor $SmtFactor --quantum $Quantum `
-                    --output $summary --raw-output $raw
-                if ($LASTEXITCODE -ne 0) { throw "raytracing_benchmark failed" }
-            }
-            elseif ($problem -eq "nbody") {
-                # n_body runs one model per process; merge into cell summary/raw.
-                $cellSummaries = @()
-                $cellRaws = @()
-                foreach ($model in $nbodyModels) {
-                    $ms = "${prefix}_${model}_summary.csv"
-                    $mr = "${prefix}_${model}_raw.csv"
-                    $legacy = "${prefix}_${model}_legacy.csv"
-                    & $exe -headless --model $model -n $N --steps $Steps `
-                        --runs $Runs --warmup $Warmup --workers $W `
-                        --smt-factor $SmtFactor --seed $Seed `
-                        --output $ms --raw-output $mr -o $legacy
-                    if ($LASTEXITCODE -ne 0) { throw "n_body ($model) failed" }
-                    $cellSummaries += $ms
-                    $cellRaws += $mr
+            foreach ($model in $ParallelModels) {
+                Write-Info "$problem workload=$N workers=$W model=$model runs=$Runs warmup=$Warmup"
+                $ms = "${prefix}_${model}_summary.csv"
+                $mr = "${prefix}_${model}_raw.csv"
+                Invoke-CampaignModel -Problem $problem -Exe $exe -Model $model `
+                    -N $N -W $W -SummaryPath $ms -RawPath $mr
+                $partSummaries += $ms
+                # Ray may not write a leaf raw at $mr; only merge existing files.
+                if (Test-Path -LiteralPath $mr -PathType Leaf) {
+                    $partRaws += $mr
                 }
-                $first = $true
-                foreach ($ms in $cellSummaries) {
-                    $lines = Get-Content $ms
-                    if ($lines.Count -eq 0) { continue }
-                    if ($first) {
-                        Set-Content -Path $summary -Value $lines[0]
-                        $first = $false
-                    }
-                    for ($i = 1; $i -lt $lines.Count; $i++) {
-                        if ($lines[$i]) { Add-Content -Path $summary -Value $lines[$i] }
-                    }
-                }
-                $first = $true
-                foreach ($mr in $cellRaws) {
-                    $lines = Get-Content $mr
-                    if ($lines.Count -eq 0) { continue }
-                    if ($first) {
-                        Set-Content -Path $raw -Value $lines[0]
-                        $first = $false
-                    }
-                    for ($i = 1; $i -lt $lines.Count; $i++) {
-                        if ($lines[$i]) { Add-Content -Path $raw -Value $lines[$i] }
-                    }
-                }
+            }
+
+            Merge-CsvFiles -DestPath $summary -SourcePaths $partSummaries
+            if ($partRaws.Count -gt 0) {
+                Merge-CsvFiles -DestPath $raw -SourcePaths $partRaws
             }
 
             Merge-CsvWithProblem -SourcePath $summary -Problem $problem `
                 -DestPath $SummaryAll -HeaderWritten ([ref]$summaryHeaderWritten)
-            Merge-CsvWithProblem -SourcePath $raw -Problem $problem `
-                -DestPath $RawAll -HeaderWritten ([ref]$rawHeaderWritten)
+            if (Test-Path -LiteralPath $raw -PathType Leaf) {
+                Merge-CsvWithProblem -SourcePath $raw -Problem $problem `
+                    -DestPath $RawAll -HeaderWritten ([ref]$rawHeaderWritten)
+            }
             "$problem,$N,$W,$summary,$raw" | Add-Content $Manifest
         }
     }
