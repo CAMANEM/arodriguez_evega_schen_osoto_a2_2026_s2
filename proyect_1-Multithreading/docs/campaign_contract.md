@@ -78,3 +78,75 @@ are **not** included in mean/CI/speedup of the summary.
 | N-Body | `n_body` short flags + GUI | same binary; long flags + optional campaign CSV |
 
 Keep legacy N-Body CSV (`iteracion,particulas,...`) intact; campaign CSV is additive.
+
+## Unified CMake build
+
+Root file: `proyect_1-Multithreading/CMakeLists.txt`.
+
+```bash
+cmake -S proyect_1-Multithreading -B build/p1 -DCMAKE_BUILD_TYPE=Release
+cmake --build build/p1 --config Release
+```
+
+On Windows without MSVC, use MinGW:
+
+```powershell
+cmake -S proyect_1-Multithreading -B build/p1 -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release
+cmake --build build/p1 --config Release
+```
+
+Campaign-oriented defaults at the root:
+
+- `BOIDS_BUILD_VISUAL=OFF`, `BOIDS_BUILD_TESTS=OFF`
+- `LIQUIDS_BUILD_TESTS=OFF`, `BUILD_TESTING=OFF`
+- `NBODY_ENABLE=ON` (requires Raylib)
+
+N-Body Raylib discovery: `find_package(raylib)`, else `-DNBODY_RAYLIB_ROOT=<prefix>`
+(or env `RAYLIB_PATH` / `NBODY_RAYLIB_ROOT`), else FetchContent of raylib 5.5.
+Windows Makefile default: `C:/raylib/w64devkit`. To skip N-Body:
+`-DNBODY_ENABLE=OFF`.
+
+Each problem remains a **separate process binary**, so a leak or unclean shutdown
+in one cell cannot poison the next problem's measurements.
+
+## Automated campaign (`campaign_all`)
+
+Scripts:
+
+- `scripts/campaign_all.ps1` (Windows)
+- `scripts/campaign_all.sh` (Linux/macOS)
+
+### Smoke (short)
+
+```powershell
+.\proyect_1-Multithreading\scripts\campaign_all.ps1 `
+  -Runs 2 -Warmup 1 -Workloads 100 -Workers 2
+```
+
+```bash
+RUNS=2 WARMUP=1 WORKLOADS=100 WORKERS=2 ./proyect_1-Multithreading/scripts/campaign_all.sh
+```
+
+### Full matrix (defaults)
+
+- Runs=200, Warmup=5, Steps=10
+- Workloads=`100,1000,10000`, Workers=`2,4,8`
+- Models=`all` (N-Body: one process per model, then merged)
+
+Optional filters: `-Problems boids,liquids` / `PROBLEMS=boids,liquids`.
+
+### Output layout
+
+```text
+proyect_1-Multithreading/data/campaign/<timestamp>/
+  manifest.csv
+  campaign_summary_all.csv   # leading column: problem
+  campaign_raw_all.csv       # leading column: problem
+  boids|liquids|ray|nbody/
+    n_<N>_w_<W>_summary.csv
+    n_<N>_w_<W>_raw.csv
+```
+
+Ray workload mapping used by the script: `100→160×120`, `1000→240×160`,
+`10000→480×320` (`--width` / `--height`). N-Body does not accept `--model all`;
+the script loops `sequential|fine|coarse|smt|cmp` and concatenates cell CSVs.
