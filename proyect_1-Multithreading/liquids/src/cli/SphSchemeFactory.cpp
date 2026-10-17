@@ -7,6 +7,8 @@
 #include "strategies/fine_grained/FineGrainedSphScheme.hpp"
 #include "strategies/smt/SmtSphScheme.hpp"
 
+#include <stdexcept>
+
 std::unique_ptr<SphScheme> makeSphScheme(const std::string& model,
                                          const SphCliOptions& options) {
     const execution_model executionModel = parseSphModel(model);

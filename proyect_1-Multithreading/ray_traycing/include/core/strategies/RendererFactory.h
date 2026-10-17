@@ -69,24 +69,48 @@ public:
      * @param workers Cantidad de workers o contextos virtuales.
      * @return Renderer propietario mediante unique_ptr.
      */
+    /**
+     * @brief Maps campaign aliases to registry keys (fine→fgmt, coarse→cgmt).
+     * @param model_name CLI model identifier.
+     * @return Canonical registry key.
+     */
+    static std::string normalize_model_name(const std::string& model_name) {
+        if (model_name == "fine") return "fgmt";
+        if (model_name == "coarse") return "cgmt";
+        return model_name;
+    }
+
+    /**
+     * @brief Maps registry keys to campaign-canonical CSV labels.
+     * @param registry_name Internal model key (fgmt|cgmt|...).
+     * @return Canonical label (fine|coarse|...).
+     */
+    static std::string canonical_model_label(const std::string& registry_name) {
+        if (registry_name == "fgmt") return "fine";
+        if (registry_name == "cgmt") return "coarse";
+        return registry_name;
+    }
+
     static std::unique_ptr<IRenderer> create(const std::string& model_name, int workers) {
-        auto it = available_registry().find(model_name);
+        const std::string key = normalize_model_name(model_name);
+        auto it = available_registry().find(key);
         if (it != available_registry().end())
             return it->second(workers);
 
         throw std::invalid_argument(
-            "Unknown model: " + model_name + ". Available: sequential, fgmt, cgmt, smt, cmp");
+            "Unknown model: " + model_name +
+            ". Available: sequential, fine|fgmt, coarse|cgmt, smt, cmp");
     }
 
     /** @param model_name Identificador del modelo. @return true si está disponible. */
     static bool is_available(const std::string& model_name) {
-        return available_registry().count(model_name) > 0;
+        return available_registry().count(normalize_model_name(model_name)) > 0;
     }
 
     /** @return Texto de ayuda con modelos y opciones registradas. */
     static std::string get_help_message() {
         return "Usage: ./raytracer [--model MODEL] [--runs N] [--workers N] [--verbose N]\n"
-               "Models available: sequential, fgmt, cgmt, smt, cmp\n"
+               "Models available: sequential, fine|fgmt, coarse|cgmt, smt, cmp\n"
                "Options:\n"
                "  --workers N  Workers for FGMT/CGMT/CMP; virtual contexts for SMT\n"
                "  --verbose N   Imprimir los primeros N ciclos del scheduler (todos los modelos)\n"

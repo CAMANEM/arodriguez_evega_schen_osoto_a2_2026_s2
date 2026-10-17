@@ -57,6 +57,18 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND
     target_link_libraries(boids PRIVATE stdc++fs)
 endif()
 
+# Campaign benchmark (Liquids-aligned CLI/CSV); does not affect demo `boids`.
+add_executable(boids_benchmark
+    src/main_benchmark.cpp
+    src/cli/BenchmarkCli.cpp
+)
+target_compile_features(boids_benchmark PRIVATE cxx_std_17)
+target_link_libraries(boids_benchmark PRIVATE boids_core)
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND
+   CMAKE_CXX_COMPILER_VERSION VERSION_LESS 9)
+    target_link_libraries(boids_benchmark PRIVATE stdc++fs)
+endif()
+
 set(BOIDS_RAYLIB_TARGET "")
 if(BOIDS_BUILD_VISUAL)
     find_package(raylib QUIET)

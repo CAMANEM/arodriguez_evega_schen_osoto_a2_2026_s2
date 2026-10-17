@@ -32,7 +32,8 @@ CMPRenderer::CMPRenderer(int workers)
     // core tenga su propio patrón de misses (cachés L1 físicamente separadas).
     cache_models_.resize(worker_count_);
     for (int i = 0; i < worker_count_; ++i)
-        cache_models_[i] = CacheModel(CACHE_SIZE, 42u + static_cast<std::uint32_t>(i));
+        cache_models_[i] = CacheModel(
+            CACHE_SIZE, CACHE_SEED_BASE + static_cast<std::uint32_t>(i));
 
     core_stats_.resize(worker_count_);
     for (int i = 0; i < worker_count_; ++i)
