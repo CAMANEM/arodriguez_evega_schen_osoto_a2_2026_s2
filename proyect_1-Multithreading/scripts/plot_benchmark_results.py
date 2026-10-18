@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """
-Genera 6 imagenes por variante HT (ht_off / ht_on):
+Genera 3 imagenes por variante HT (ht_off / ht_on):
 
-  plots/{problema}_comparison.png  — cuadricula 3x3 (filas=N, cols=W);
-                                     cada celda muestra la serie temporal de
-                                     todas las metodologias en el mismo plano.
-  plots/performance.png            — X=N, Y=tiempo medio de ejecucion;
-                                     grid 4 filas (problemas) x 3 cols (W).
-  plots/scalability.png            — X=W, Y=tiempo medio de ejecucion;
-                                     grid 4 filas (problemas) x 3 cols (N).
+  plots/comparison.png   — cuadricula 3x3 (filas=N, cols=W); cada celda contiene
+                           la serie temporal MEDIA de todos los problemas y todas
+                           las metodologias. Color = problema, estilo = metodologia.
+  plots/performance.png  — X=N, Y=tiempo medio; 3 subgraficas (W=2,4,8);
+                           todos los problemas y metodologias.
+  plots/scalability.png  — X=W, Y=tiempo medio; 3 subgraficas (N=50,500,5000);
+                           todos los problemas y metodologias paralelas + ref. secuencial.
 
 Estructura de entrada:
   results/
@@ -21,6 +21,8 @@ import re
 import sys
 from pathlib import Path
 
+
+# ─── DEPENDENCIAS ─────────────────────────────────────────────────────────────
 
 def _ensure_deps():
     try:
@@ -51,12 +53,11 @@ def _ensure_deps():
 
 _ensure_deps()
 
-import matplotlib  # noqa: E402
-
+import matplotlib                              # noqa: E402
 matplotlib.use("Agg")
-import matplotlib.patches as mpatches  # noqa: E402
-import matplotlib.pyplot as plt  # noqa: E402
-import numpy as np  # noqa: E402
+import matplotlib.lines as mlines             # noqa: E402
+import matplotlib.pyplot as plt               # noqa: E402
+import numpy as np                            # noqa: E402
 
 # ─── RUTAS ────────────────────────────────────────────────────────────────────
 
@@ -72,7 +73,7 @@ _RAY_PAR = re.compile(r"^n_(\d+)_w_(\d+)_(fine|coarse|smt|cmp)_summary_\3_frames
 
 # ─── ETIQUETAS, COLORES Y PARAMETROS ──────────────────────────────────────────
 
-PROBLEMS = ["boids", "liquids", "ray", "nbody"]
+PROBLEMS   = ["boids", "liquids", "ray", "nbody"]
 MODELS_ALL = ["sequential", "fine", "coarse", "smt", "cmp"]
 MODELS_PAR = ["fine", "coarse", "smt", "cmp"]
 NS = [50, 500, 5000]
@@ -91,12 +92,31 @@ MODEL_LABELS = {
     "smt":        "SMT",
     "cmp":        "CMP",
 }
-COLORS = {
+
+# Color por metodologia (para graficas centradas en metodologia)
+METH_COLORS = {
     "sequential": "#4C72B0",
     "fine":       "#DD8452",
     "coarse":     "#55A868",
     "smt":        "#C44E52",
     "cmp":        "#8172B2",
+}
+
+# Color por problema
+PROB_COLORS = {
+    "boids":   "#1f77b4",   # azul
+    "liquids": "#ff7f0e",   # naranja
+    "ray":     "#2ca02c",   # verde
+    "nbody":   "#d62728",   # rojo
+}
+
+# Estilo de linea por metodologia
+LINESTYLES = {
+    "sequential": "-",
+    "fine":       "--",
+    "coarse":     "-.",
+    "smt":        ":",
+    "cmp":        (0, (5, 1)),   # guion denso
 }
 
 # ─── LECTURA DE DATOS ─────────────────────────────────────────────────────────
@@ -132,12 +152,9 @@ def read_times(
 
 
 def collect_problem_data(prob_dir: Path, prob: str) -> dict:
-    """
-    Retorna { model: { n: { w: [times] } } }
-    Sequential usa w=0.
-    """
+    """Retorna { model: { n: { w: [times] } } }. Sequential usa w=0."""
     is_liquids = prob == "liquids"
-    is_ray = prob == "ray"
+    is_ray     = prob == "ray"
     data = {m: {} for m in MODELS_ALL}
 
     for csv_path in sorted(prob_dir.iterdir()):
@@ -174,101 +191,158 @@ def collect_problem_data(prob_dir: Path, prob: str) -> dict:
     return data
 
 
+def collect_all_data(ht_dir: Path) -> dict:
+    """Retorna { prob: { model: { n: { w: [times] } } } }."""
+    campaign_dir = ht_dir / "campaign"
+    if not campaign_dir.is_dir():
+        return {}
+
+    all_data = {}
+    for run_dir in sorted(campaign_dir.iterdir()):
+        if not run_dir.is_dir():
+            continue
+        for prob_dir in sorted(run_dir.iterdir()):
+            if not prob_dir.is_dir():
+                continue
+            prob = prob_dir.name
+            all_data[prob] = collect_problem_data(prob_dir, prob)
+
+    return all_data
+
+
 # ─── UTILIDADES DE GRAFICACION ────────────────────────────────────────────────
 
 
-def _style_ax(ax: plt.Axes, subtitle: str, fontsize: int = 8):
+def _style_ax(ax: plt.Axes, subtitle: str, fontsize: int = 9):
     ax.set_title(subtitle, fontsize=fontsize, fontweight="bold", pad=5)
-    ax.yaxis.grid(True, linestyle="--", alpha=0.45, color="lightgray", linewidth=0.6)
+    ax.yaxis.grid(True, linestyle="--", alpha=0.4, color="lightgray", linewidth=0.6)
     ax.set_axisbelow(True)
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
     ax.tick_params(labelsize=7)
 
 
-def _draw_series(ax: plt.Axes, times: list, color: str, label: str):
-    """Linea de tiempo vs numero de prueba con banda de dispersion."""
-    arr = np.array(times)
-    x = np.arange(1, len(arr) + 1)
-    mean_val = float(np.mean(arr))
-    std_val = float(np.std(arr))
+def _draw_mean_band(ax, times, color, linestyle):
+    """Dibuja media (linea) + banda de desvio estandar. Sin puntos individuales."""
+    arr    = np.array(times)
+    x      = np.arange(1, len(arr) + 1)
+    mean_v = float(np.mean(arr))
+    std_v  = float(np.std(arr))
 
-    ax.plot(x, arr, color=color, linewidth=0.7, alpha=0.60, zorder=2)
-    ax.scatter(x, arr, s=2, color=color, alpha=0.30, zorder=3)
-    ax.axhline(mean_val, color=color, linewidth=1.2, linestyle="--",
-               alpha=0.90, label=label, zorder=4)
-    ax.fill_between(x, mean_val - std_val, mean_val + std_val,
-                    color=color, alpha=0.08, zorder=1)
-    return mean_val
-
-
-def _legend_handles(models=None):
-    if models is None:
-        models = MODELS_ALL
-    return [mpatches.Patch(color=COLORS[m], label=MODEL_LABELS[m]) for m in models]
+    ax.plot(x, arr, color=color, linewidth=0.35, alpha=0.08, zorder=1,
+            linestyle=linestyle)
+    ax.axhline(mean_v, color=color, linewidth=1.4, linestyle=linestyle,
+               alpha=0.92, zorder=3)
+    ax.fill_between(x, mean_v - std_v, mean_v + std_v,
+                    color=color, alpha=0.05, zorder=2)
 
 
-# ─── IMAGEN 1: COMPARISON (serie temporal, todas las metodologias) ────────────
+def _avg_across(lists: list) -> list:
+    """Promedio elemento a elemento de varias listas de tiempos (alineadas por indice de ejecucion)."""
+    valid = [l for l in lists if l]
+    if not valid:
+        return []
+    min_len = min(len(l) for l in valid)
+    arr = np.array([l[:min_len] for l in valid])
+    return list(np.mean(arr, axis=0))
 
 
-def generate_comparison_grid(prob_data: dict, prob_label: str, out_path: Path):
+def _save_fig(fig, out_path: Path):
+    """Guarda la figura en PNG (150 dpi) y SVG."""
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out_path, dpi=150, bbox_inches="tight")
+    svg_path = out_path.with_suffix(".svg")
+    fig.savefig(svg_path, bbox_inches="tight")
+    print(f"    {out_path.name}  +  {svg_path.name}")
+
+
+def _add_figure_legend(fig):
+    """Leyenda con dos secciones: colores (problema) y estilos (metodologia)."""
+    prob_handles = [
+        mlines.Line2D([], [], color=PROB_COLORS[p], linewidth=2.5,
+                      linestyle="-", label=PROBLEM_LABELS[p])
+        for p in PROBLEMS
+    ]
+    method_handles = [
+        mlines.Line2D([], [], color="dimgray", linewidth=1.8,
+                      linestyle=LINESTYLES[m], label=MODEL_LABELS[m])
+        for m in MODELS_ALL
+    ]
+    sep = mlines.Line2D([], [], color="none", label=" ")
+
+    all_handles = [
+        mlines.Line2D([], [], color="none", label="Problema:"),
+        *prob_handles,
+        sep,
+        mlines.Line2D([], [], color="none", label="Metodologia:"),
+        *method_handles,
+    ]
+    fig.legend(
+        handles=all_handles,
+        loc="upper center",
+        bbox_to_anchor=(0.5, 1.0),
+        ncol=2 + max(len(PROBLEMS), len(MODELS_ALL)),
+        fontsize=8,
+        framealpha=0.9,
+        handlelength=2.5,
+        columnspacing=0.9,
+    )
+
+
+# ─── IMAGEN 1: COMPARISON (serie temporal, todos los problemas) ───────────────
+
+
+def generate_comparison_grid(all_data: dict, out_path: Path):
     """
-    Cuadricula 3x3 (filas=N, columnas=W).
-    Cada celda contiene la serie temporal de todas las metodologias en el mismo plano.
-    Sequential se muestra igual en las tres columnas de cada fila (no depende de W).
+    Cuadricula 3x3 (filas=N, cols=W).
+    Cada celda: media de todos los problemas x todas las metodologias.
+    Color = problema, estilo de linea = metodologia.
     """
     fig, axes = plt.subplots(
         len(NS), len(WS),
-        figsize=(5.0 * len(WS), 3.8 * len(NS)),
+        figsize=(5.5 * len(WS), 4.0 * len(NS)),
         squeeze=False,
     )
     fig.patch.set_facecolor("white")
 
     for r, n_val in enumerate(NS):
-        seq_times = prob_data.get("sequential", {}).get(n_val, {}).get(0, [])
-
         for c, w_val in enumerate(WS):
             ax = axes[r][c]
             has_any = False
 
-            if seq_times:
-                _draw_series(ax, seq_times, COLORS["sequential"], MODEL_LABELS["sequential"])
-                has_any = True
+            for prob in PROBLEMS:
+                prob_data = all_data.get(prob, {})
+                color     = PROB_COLORS[prob]
 
-            for model in MODELS_PAR:
-                times = prob_data.get(model, {}).get(n_val, {}).get(w_val, [])
-                if times:
-                    _draw_series(ax, times, COLORS[model], MODEL_LABELS[model])
+                seq_times = prob_data.get("sequential", {}).get(n_val, {}).get(0, [])
+                if seq_times:
+                    _draw_mean_band(ax, seq_times, color, LINESTYLES["sequential"])
                     has_any = True
+
+                for model in MODELS_PAR:
+                    times = prob_data.get(model, {}).get(n_val, {}).get(w_val, [])
+                    if times:
+                        _draw_mean_band(ax, times, color, LINESTYLES[model])
+                        has_any = True
 
             if not has_any:
                 ax.text(0.5, 0.5, "sin datos", transform=ax.transAxes,
                         ha="center", va="center", fontsize=9, color="lightgray")
 
             _style_ax(ax, f"N={n_val}  |  W={w_val}")
-
             if r == len(NS) - 1:
                 ax.set_xlabel("Numero de prueba", fontsize=8)
             if c == 0:
                 ax.set_ylabel("Tiempo de ejecucion (s)", fontsize=8)
 
-    fig.legend(
-        handles=_legend_handles(),
-        loc="upper center",
-        bbox_to_anchor=(0.5, 1.0),
-        ncol=len(MODELS_ALL),
-        fontsize=9,
-        framealpha=0.9,
-    )
+    _add_figure_legend(fig)
     fig.suptitle(
-        f"{prob_label} — Comparativa de metodologias",
-        fontsize=13, fontweight="bold", y=1.04,
+        "Comparativa de metodologias y problemas - serie temporal",
+        fontsize=13, fontweight="bold", y=1.05,
     )
-    fig.tight_layout(rect=[0, 0, 1, 0.97])
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(out_path, dpi=150, bbox_inches="tight")
+    fig.tight_layout(rect=[0, 0, 1, 0.96])
+    _save_fig(fig, out_path)
     plt.close(fig)
-    print(f"    {out_path.name}")
 
 
 # ─── IMAGEN 2: PERFORMANCE (X=N, Y=tiempo medio) ─────────────────────────────
@@ -276,26 +350,23 @@ def generate_comparison_grid(prob_data: dict, prob_label: str, out_path: Path):
 
 def generate_performance_graph(all_data: dict, plots_dir: Path):
     """
-    Rendimiento: X=N (escala log), Y=tiempo medio de ejecucion (escala log).
-    Grid: filas=problemas, columnas=W (2,4,8).
-    Sequential aparece igual en todas las columnas de cada fila.
+    X=N (log), Y=tiempo medio (log).
+    3 subgraficas (una por W); cada una contiene todos los problemas x metodologias.
+    Sequential aparece igual en las tres columnas (no depende de W).
     """
-    probs = [p for p in PROBLEMS if p in all_data]
-    n_rows, n_cols = len(probs), len(WS)
-
     fig, axes = plt.subplots(
-        n_rows, n_cols,
-        figsize=(4.5 * n_cols, 3.5 * n_rows),
+        1, len(WS),
+        figsize=(5.5 * len(WS), 4.5),
         squeeze=False,
     )
     fig.patch.set_facecolor("white")
 
-    for r, prob in enumerate(probs):
-        prob_data = all_data[prob]
-        prob_label = PROBLEM_LABELS.get(prob, prob)
+    for c, w_val in enumerate(WS):
+        ax = axes[0][c]
 
-        for c, w_val in enumerate(WS):
-            ax = axes[r][c]
+        for prob in PROBLEMS:
+            prob_data = all_data.get(prob, {})
+            color = PROB_COLORS[prob]
 
             for model in MODELS_ALL:
                 model_data = prob_data.get(model, {})
@@ -308,45 +379,29 @@ def generate_performance_graph(all_data: dict, plots_dir: Path):
                         ys.append(float(np.mean(times)))
 
                 if len(xs) >= 2:
-                    ax.plot(
-                        xs, ys,
-                        marker="o", markersize=5,
-                        color=COLORS[model], linewidth=1.5,
-                        label=MODEL_LABELS[model],
-                    )
+                    ax.plot(xs, ys, color=color, linewidth=1.4,
+                            linestyle=LINESTYLES[model],
+                            marker="o", markersize=4, zorder=3)
                 elif len(xs) == 1:
-                    ax.scatter(xs, ys, s=30, color=COLORS[model],
-                               marker="o", zorder=4)
+                    ax.scatter(xs, ys, s=25, color=color, zorder=4)
 
-            _style_ax(ax, f"{prob_label}  |  W={w_val}")
-            ax.set_xscale("log")
-            ax.set_yscale("log")
-            ax.set_xticks(NS)
-            ax.set_xticklabels([str(n) for n in NS], fontsize=7)
+        _style_ax(ax, f"W = {w_val}")
+        ax.set_xscale("log")
+        ax.set_yscale("log")
+        ax.set_xticks(NS)
+        ax.set_xticklabels([str(n) for n in NS], fontsize=7)
+        ax.set_xlabel("Particulas (N)", fontsize=8)
+        if c == 0:
+            ax.set_ylabel("Tiempo medio (s)", fontsize=8)
 
-            if r == n_rows - 1:
-                ax.set_xlabel("Particulas (N)", fontsize=8)
-            if c == 0:
-                ax.set_ylabel("Tiempo medio (s)", fontsize=8)
-
-    fig.legend(
-        handles=_legend_handles(),
-        loc="upper center",
-        bbox_to_anchor=(0.5, 1.0),
-        ncol=len(MODELS_ALL),
-        fontsize=9,
-        framealpha=0.9,
-    )
+    _add_figure_legend(fig)
     fig.suptitle(
         "Rendimiento: Tiempo de ejecucion vs Cantidad de particulas (N)",
-        fontsize=13, fontweight="bold", y=1.04,
+        fontsize=13, fontweight="bold", y=1.05,
     )
-    fig.tight_layout(rect=[0, 0, 1, 0.97])
-    out_path = plots_dir / "performance.png"
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(out_path, dpi=150, bbox_inches="tight")
+    fig.tight_layout(rect=[0, 0, 1, 0.88])
+    _save_fig(fig, plots_dir / "performance.png")
     plt.close(fig)
-    print(f"    performance.png")
 
 
 # ─── IMAGEN 3: SCALABILITY (X=W, Y=tiempo medio) ─────────────────────────────
@@ -354,39 +409,30 @@ def generate_performance_graph(all_data: dict, plots_dir: Path):
 
 def generate_scalability_graph(all_data: dict, plots_dir: Path):
     """
-    Escalabilidad: X=W (hilos), Y=tiempo medio de ejecucion.
-    Grid: filas=problemas, columnas=N (50,500,5000).
+    X=W (hilos), Y=tiempo medio.
+    3 subgraficas (una por N); cada una contiene todos los problemas x metodologias.
     Sequential aparece como linea horizontal de referencia.
     """
-    probs = [p for p in PROBLEMS if p in all_data]
-    n_rows, n_cols = len(probs), len(NS)
-
     fig, axes = plt.subplots(
-        n_rows, n_cols,
-        figsize=(4.5 * n_cols, 3.5 * n_rows),
+        1, len(NS),
+        figsize=(5.5 * len(NS), 4.5),
         squeeze=False,
     )
     fig.patch.set_facecolor("white")
 
-    for r, prob in enumerate(probs):
-        prob_data = all_data[prob]
-        prob_label = PROBLEM_LABELS.get(prob, prob)
+    for c, n_val in enumerate(NS):
+        ax = axes[0][c]
 
-        for c, n_val in enumerate(NS):
-            ax = axes[r][c]
+        for prob in PROBLEMS:
+            prob_data = all_data.get(prob, {})
+            color = PROB_COLORS[prob]
 
-            # Referencia secuencial (linea horizontal)
             seq_times = prob_data.get("sequential", {}).get(n_val, {}).get(0, [])
             if seq_times:
                 mean_seq = float(np.mean(seq_times))
-                ax.axhline(
-                    mean_seq,
-                    color=COLORS["sequential"], linewidth=1.5,
-                    linestyle="--", alpha=0.85,
-                    label=MODEL_LABELS["sequential"],
-                )
+                ax.axhline(mean_seq, color=color, linewidth=1.4,
+                           linestyle=LINESTYLES["sequential"], alpha=0.80, zorder=2)
 
-            # Metodologias paralelas
             for model in MODELS_PAR:
                 xs, ys = [], []
                 for w_val in WS:
@@ -396,86 +442,174 @@ def generate_scalability_graph(all_data: dict, plots_dir: Path):
                         ys.append(float(np.mean(times)))
 
                 if len(xs) >= 2:
-                    ax.plot(
-                        xs, ys,
-                        marker="o", markersize=5,
-                        color=COLORS[model], linewidth=1.5,
-                        label=MODEL_LABELS[model],
-                    )
+                    ax.plot(xs, ys, color=color, linewidth=1.4,
+                            linestyle=LINESTYLES[model],
+                            marker="o", markersize=4, zorder=3)
                 elif len(xs) == 1:
-                    ax.scatter(xs, ys, s=30, color=COLORS[model],
-                               marker="o", zorder=4)
+                    ax.scatter(xs, ys, s=25, color=color, zorder=4)
 
-            _style_ax(ax, f"{prob_label}  |  N={n_val}")
-            ax.set_xticks(WS)
-            ax.set_xticklabels([f"W={w}" for w in WS], fontsize=7)
+        _style_ax(ax, f"N = {n_val}")
+        ax.set_xticks(WS)
+        ax.set_xticklabels([f"W={w}" for w in WS], fontsize=7)
+        ax.set_xlabel("Hilos (W)", fontsize=8)
+        if c == 0:
+            ax.set_ylabel("Tiempo medio (s)", fontsize=8)
 
-            if r == n_rows - 1:
-                ax.set_xlabel("Hilos (W)", fontsize=8)
-            if c == 0:
-                ax.set_ylabel("Tiempo medio (s)", fontsize=8)
-
-    fig.legend(
-        handles=_legend_handles(),
-        loc="upper center",
-        bbox_to_anchor=(0.5, 1.0),
-        ncol=len(MODELS_ALL),
-        fontsize=9,
-        framealpha=0.9,
-    )
+    _add_figure_legend(fig)
     fig.suptitle(
         "Escalabilidad: Tiempo de ejecucion vs Cantidad de hilos (W)",
-        fontsize=13, fontweight="bold", y=1.04,
+        fontsize=13, fontweight="bold", y=1.05,
     )
-    fig.tight_layout(rect=[0, 0, 1, 0.97])
-    out_path = plots_dir / "scalability.png"
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(out_path, dpi=150, bbox_inches="tight")
+    fig.tight_layout(rect=[0, 0, 1, 0.88])
+    _save_fig(fig, plots_dir / "scalability.png")
     plt.close(fig)
-    print(f"    scalability.png")
+
+
+# ─── IMAGEN 4: COMPARISON_METHODOLOGIES (agrega problemas, muestra metodologias) ──
+
+
+def generate_comparison_methodologies(all_data: dict, out_path: Path):
+    """
+    Cuadricula 3x3 (filas=N, cols=W).
+    Omite la dimension de problema: para cada metodologia concatena los tiempos
+    de TODOS los problemas y muestra media + banda. 5 lineas por celda.
+    Color = metodologia.
+    """
+    fig, axes = plt.subplots(
+        len(NS), len(WS),
+        figsize=(5.5 * len(WS), 4.0 * len(NS)),
+        squeeze=False,
+    )
+    fig.patch.set_facecolor("white")
+
+    for r, n_val in enumerate(NS):
+        for c, w_val in enumerate(WS):
+            ax = axes[r][c]
+            has_any = False
+
+            for model in MODELS_ALL:
+                lists = []
+                for prob in PROBLEMS:
+                    prob_data = all_data.get(prob, {})
+                    w_key = 0 if model == "sequential" else w_val
+                    times = prob_data.get(model, {}).get(n_val, {}).get(w_key, [])
+                    if times:
+                        lists.append(times)
+
+                averaged = _avg_across(lists)
+                if averaged:
+                    _draw_mean_band(ax, averaged, METH_COLORS[model], "-")
+                    has_any = True
+
+            if not has_any:
+                ax.text(0.5, 0.5, "sin datos", transform=ax.transAxes,
+                        ha="center", va="center", fontsize=9, color="lightgray")
+
+            _style_ax(ax, f"N={n_val}  |  W={w_val}")
+            if r == len(NS) - 1:
+                ax.set_xlabel("Muestra (todos los problemas)", fontsize=8)
+            if c == 0:
+                ax.set_ylabel("Tiempo de ejecucion (s)", fontsize=8)
+
+    meth_handles = [
+        mlines.Line2D([], [], color=METH_COLORS[m], linewidth=2.5,
+                      linestyle="-", label=MODEL_LABELS[m])
+        for m in MODELS_ALL
+    ]
+    fig.legend(handles=meth_handles, loc="upper center", bbox_to_anchor=(0.5, 1.0),
+               ncol=len(MODELS_ALL), fontsize=9, framealpha=0.9, handlelength=2.5)
+    fig.suptitle(
+        "Comparativa de metodologias (agregado sobre todos los problemas)",
+        fontsize=13, fontweight="bold", y=1.05,
+    )
+    fig.tight_layout(rect=[0, 0, 1, 0.96])
+    _save_fig(fig, out_path)
+    plt.close(fig)
+
+
+# ─── IMAGEN 5: COMPARISON_PROBLEMS (agrega metodologias, muestra problemas) ───
+
+
+def generate_comparison_problems(all_data: dict, out_path: Path):
+    """
+    Cuadricula 3x3 (filas=N, cols=W).
+    Omite la dimension de metodologia: para cada problema concatena los tiempos
+    de TODAS las metodologias y muestra media + banda. 4 lineas por celda.
+    Color = problema.
+    """
+    fig, axes = plt.subplots(
+        len(NS), len(WS),
+        figsize=(5.5 * len(WS), 4.0 * len(NS)),
+        squeeze=False,
+    )
+    fig.patch.set_facecolor("white")
+
+    for r, n_val in enumerate(NS):
+        for c, w_val in enumerate(WS):
+            ax = axes[r][c]
+            has_any = False
+
+            for prob in PROBLEMS:
+                prob_data = all_data.get(prob, {})
+                lists = []
+
+                seq_times = prob_data.get("sequential", {}).get(n_val, {}).get(0, [])
+                if seq_times:
+                    lists.append(seq_times)
+                for model in MODELS_PAR:
+                    times = prob_data.get(model, {}).get(n_val, {}).get(w_val, [])
+                    if times:
+                        lists.append(times)
+
+                averaged = _avg_across(lists)
+                if averaged:
+                    _draw_mean_band(ax, averaged, PROB_COLORS[prob], "-")
+                    has_any = True
+
+            if not has_any:
+                ax.text(0.5, 0.5, "sin datos", transform=ax.transAxes,
+                        ha="center", va="center", fontsize=9, color="lightgray")
+
+            _style_ax(ax, f"N={n_val}  |  W={w_val}")
+            if r == len(NS) - 1:
+                ax.set_xlabel("Muestra (todas las metodologias)", fontsize=8)
+            if c == 0:
+                ax.set_ylabel("Tiempo de ejecucion (s)", fontsize=8)
+
+    prob_handles = [
+        mlines.Line2D([], [], color=PROB_COLORS[p], linewidth=2.5,
+                      linestyle="-", label=PROBLEM_LABELS[p])
+        for p in PROBLEMS
+    ]
+    fig.legend(handles=prob_handles, loc="upper center", bbox_to_anchor=(0.5, 1.0),
+               ncol=len(PROBLEMS), fontsize=9, framealpha=0.9, handlelength=2.5)
+    fig.suptitle(
+        "Comparativa de problemas (agregado sobre todas las metodologias)",
+        fontsize=13, fontweight="bold", y=1.05,
+    )
+    fig.tight_layout(rect=[0, 0, 1, 0.96])
+    _save_fig(fig, out_path)
+    plt.close(fig)
 
 
 # ─── PROCESAMIENTO ────────────────────────────────────────────────────────────
 
 
 def process_ht_variant(ht_dir: Path) -> int:
-    campaign_dir = ht_dir / "campaign"
-    if not campaign_dir.is_dir():
-        print(f"  Sin directorio campaign en {ht_dir.name}")
-        return 0
-
-    plots_dir = ht_dir / "plots"
-
-    # Recopilar todos los datos de una sola vez
-    all_data = {}
-    for run_dir in sorted(campaign_dir.iterdir()):
-        if not run_dir.is_dir():
-            continue
-        for prob_dir in sorted(run_dir.iterdir()):
-            if not prob_dir.is_dir():
-                continue
-            prob = prob_dir.name
-            all_data[prob] = collect_problem_data(prob_dir, prob)
-
+    all_data = collect_all_data(ht_dir)
     if not all_data:
         print("  Sin datos encontrados.")
         return 0
 
-    generated = 0
+    plots_dir = ht_dir / "plots"
 
-    # Imagenes de comparativa por problema
-    for prob, prob_data in all_data.items():
-        prob_label = PROBLEM_LABELS.get(prob, prob.capitalize())
-        out_path = plots_dir / f"{prob}_comparison.png"
-        generate_comparison_grid(prob_data, prob_label, out_path)
-        generated += 1
-
-    # Graficas globales de rendimiento y escalabilidad
+    generate_comparison_grid(all_data, plots_dir / "comparison.png")
+    generate_comparison_methodologies(all_data, plots_dir / "comparison_methodologies.png")
+    generate_comparison_problems(all_data, plots_dir / "comparison_problems.png")
     generate_performance_graph(all_data, plots_dir)
     generate_scalability_graph(all_data, plots_dir)
-    generated += 2
 
-    return generated
+    return 10  # 5 PNG + 5 SVG
 
 
 # ─── MAIN ─────────────────────────────────────────────────────────────────────
@@ -487,7 +621,6 @@ def main():
         sys.exit(1)
 
     total = 0
-
     for variant in ["ht_off", "ht_on"]:
         ht_dir = RESULTS_DIR / variant
         if not ht_dir.is_dir():
@@ -499,7 +632,7 @@ def main():
         print(f"{'=' * 55}")
         count = process_ht_variant(ht_dir)
         total += count
-        print(f"  -> {count} imagenes generadas en {ht_dir / 'plots'}")
+        print(f"  -> {count} imagenes en {ht_dir / 'plots'}")
 
     print(f"\n{'=' * 55}")
     print(f"  Total general: {total} imagenes")
