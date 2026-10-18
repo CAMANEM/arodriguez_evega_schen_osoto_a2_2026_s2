@@ -165,3 +165,69 @@ proyect_1-Multithreading/data/campaign/<timestamp>/
 
 Ray workload mapping used by the script: `100→160×120`, `1000→240×160`,
 `10000→480×320` (`--width` / `--height`).
+
+## Linux `perf` profiling (headless)
+
+Wraps the **same** Release binaries; no C++ changes. Meant for Arch/Linux
+physical hosts (not WSL). Exports CSV and PNG without a GUI
+(`MPLBACKEND=Agg` inside `plot_perf.py`).
+
+### Scripts
+
+| Script | Role |
+|---|---|
+| `scripts/run_perf_and_plot.sh` | One-shot: profile + plot |
+| `scripts/perf_profile_all.sh` | `perf stat -x,` sweep + optional auto-plot |
+| `scripts/plot_perf.py` | Parse raw `perf` CSV → `perf_counters.csv` + PNGs |
+
+### Arch deps (once)
+
+```bash
+sudo pacman -S perf cmake base-devel python python-matplotlib python-pandas
+sudo sysctl kernel.perf_event_paranoid=1
+```
+
+### Default matrix
+
+- `RUNS=1`, `WARMUP=0`, `STEPS=10`
+- `WORKLOADS=50,500,5000`, `WORKERS=2,4,8`
+- Models: `sequential` once per workload; `fine|coarse|smt|cmp` per worker
+- Events: `cycles,instructions,cache-references,cache-misses,context-switches,cpu-migrations,task-clock`
+
+Cell count ≈ `4 problems × 3 workloads × (1 + 3×4) = 156` `perf` runs.
+
+### Run
+
+```bash
+# First time (build + profile + figures)
+./proyect_1-Multithreading/scripts/run_perf_and_plot.sh
+
+# Reuse binaries
+SKIP_BUILD=1 ./proyect_1-Multithreading/scripts/run_perf_and_plot.sh
+
+# After disabling HT/SMT in BIOS (same suite, labeled off)
+SKIP_BUILD=1 BIOS_LABEL=off ./proyect_1-Multithreading/scripts/run_perf_and_plot.sh
+```
+
+Re-plot only:
+
+```bash
+python3 proyect_1-Multithreading/scripts/plot_perf.py \
+  --manifest proyect_1-Multithreading/data/perf/<ts>/manifest.csv \
+  --outdir proyect_1-Multithreading/data/perf/<ts>
+```
+
+### Output layout
+
+```text
+proyect_1-Multithreading/data/perf/<timestamp>/
+  host_meta.txt          # lscpu / BIOS label
+  manifest.csv
+  perf_counters.csv      # cycles, ipc, cache_miss_rate, ...
+  raw/*.perf.csv         # perf -x, per cell
+  figures/*.png          # IPC, miss rate, context-switches, heatmaps
+```
+
+Set `BIOS_LABEL=on|off` so ON vs OFF campaigns stay distinguishable when
+merged for the paper. This layer complements (does not replace) the 200-run
+wall-time campaign.
