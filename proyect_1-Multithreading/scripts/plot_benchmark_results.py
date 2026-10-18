@@ -56,6 +56,7 @@ _ensure_deps()
 import matplotlib                              # noqa: E402
 matplotlib.use("Agg")
 import matplotlib.lines as mlines             # noqa: E402
+import matplotlib.patches as mpatches        # noqa: E402
 import matplotlib.pyplot as plt               # noqa: E402
 import numpy as np                            # noqa: E402
 
@@ -592,6 +593,90 @@ def generate_comparison_problems(all_data: dict, out_path: Path):
     plt.close(fig)
 
 
+# ─── IMAGENES POR PROBLEMA ({problema}_comparison) ───────────────────────────
+
+
+def generate_per_problem_grids(all_data: dict, plots_dir: Path) -> int:
+    """
+    Genera {problema}_comparison.(png/svg) para cada problema.
+    Cuadricula 3x3 (filas=N, cols=W), sharey por fila.
+    Cada celda: boxplot (caja Q1-Q3 + mediana + bigotes) con todos los puntos
+    individuales superpuestos con jitter. Sin linea de media ni banda.
+    Color = metodologia.
+    """
+    count = 0
+
+    for prob in PROBLEMS:
+        prob_data  = all_data.get(prob, {})
+        prob_label = PROBLEM_LABELS.get(prob, prob.capitalize())
+
+        fig, axes = plt.subplots(
+            len(NS), len(WS),
+            figsize=(5.5 * len(WS), 4.0 * len(NS)),
+            sharey="row",
+            squeeze=False,
+        )
+        fig.patch.set_facecolor("white")
+
+        for r, n_val in enumerate(NS):
+            seq_times = prob_data.get("sequential", {}).get(n_val, {}).get(0, [])
+
+            for c, w_val in enumerate(WS):
+                ax = axes[r][c]
+                has_any = False
+
+                # Sequential (misma serie para toda la fila)
+                if seq_times:
+                    x = np.arange(1, len(seq_times) + 1)
+                    ax.plot(x, seq_times, color=METH_COLORS["sequential"],
+                            linewidth=0.6, alpha=0.75, zorder=2,
+                            marker="o", markersize=2.5, markeredgewidth=0)
+                    has_any = True
+
+                # Metodologias paralelas
+                for model in MODELS_PAR:
+                    times = prob_data.get(model, {}).get(n_val, {}).get(w_val, [])
+                    if times:
+                        x = np.arange(1, len(times) + 1)
+                        ax.plot(x, times, color=METH_COLORS[model],
+                                linewidth=0.6, alpha=0.75, zorder=2,
+                                marker="o", markersize=2.5, markeredgewidth=0)
+                        has_any = True
+
+                if not has_any:
+                    ax.text(0.5, 0.5, "sin datos", transform=ax.transAxes,
+                            ha="center", va="center", fontsize=9, color="lightgray")
+
+                _style_ax(ax, f"N={n_val}  |  W={w_val}")
+                if r == len(NS) - 1:
+                    ax.set_xlabel("Numero de ejecucion", fontsize=8)
+                if c == 0:
+                    ax.set_ylabel("Tiempo de ejecucion (s)", fontsize=8)
+
+        meth_handles = [
+            mpatches.Patch(facecolor=METH_COLORS[m], alpha=0.70, label=MODEL_LABELS[m])
+            for m in MODELS_ALL
+        ]
+        fig.legend(
+            handles=meth_handles,
+            loc="upper center",
+            bbox_to_anchor=(0.5, 1.0),
+            ncol=len(MODELS_ALL),
+            fontsize=9,
+            framealpha=0.9,
+        )
+        fig.suptitle(
+            f"{prob_label} — Distribucion de tiempos por metodologia",
+            fontsize=13, fontweight="bold", y=1.05,
+        )
+        fig.tight_layout(rect=[0, 0, 1, 0.96])
+        _save_fig(fig, plots_dir / f"{prob}_comparison.png")
+        plt.close(fig)
+        count += 2  # PNG + SVG
+
+    return count
+
+
 # ─── PROCESAMIENTO ────────────────────────────────────────────────────────────
 
 
@@ -608,8 +693,9 @@ def process_ht_variant(ht_dir: Path) -> int:
     generate_comparison_problems(all_data, plots_dir / "comparison_problems.png")
     generate_performance_graph(all_data, plots_dir)
     generate_scalability_graph(all_data, plots_dir)
+    per_prob = generate_per_problem_grids(all_data, plots_dir)
 
-    return 10  # 5 PNG + 5 SVG
+    return 10 + per_prob  # 5 combinadas + 4 por problema (PNG + SVG cada una)
 
 
 # ─── MAIN ─────────────────────────────────────────────────────────────────────
