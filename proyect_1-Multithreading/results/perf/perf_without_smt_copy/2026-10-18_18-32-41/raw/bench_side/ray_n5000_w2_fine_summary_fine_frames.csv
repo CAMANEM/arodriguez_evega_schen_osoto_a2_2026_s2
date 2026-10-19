@@ -1,0 +1,2 @@
+frame,model,phase,n_workers,execution_time_s,virtual_time_ns,stall_time_ns,context_switch_time_ns,stall_count,context_switches
+1,fine,measured,2,0.395322205,664376,19990400,0,6247,83035

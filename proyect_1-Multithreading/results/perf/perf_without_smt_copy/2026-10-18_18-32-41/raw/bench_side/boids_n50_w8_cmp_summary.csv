@@ -1,0 +1,2 @@
+model,workload_n,steps,effective_workers,quantum,smt_factor,seed,runs,warmup,mean_s,stddev_s,ci95_lo,ci95_hi,speedup,efficiency
+cmp,50,10,6,1,2,42,1,0,0.002539531,0,0.002539531,0.002539531,0.331534838519,0.0552558064199

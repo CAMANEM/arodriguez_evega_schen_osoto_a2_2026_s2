@@ -1,0 +1,27 @@
+{
+  "version": 3,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 21,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "msys2-mingw64",
+      "displayName": "MSYS2 MinGW-w64",
+      "description": "Configura el proyecto con GCC POSIX y MinGW Makefiles de MSYS2.",
+      "generator": "MinGW Makefiles",
+      "binaryDir": "${sourceDir}/build-msys2",
+      "cacheVariables": {
+        "CMAKE_CXX_COMPILER": "C:/msys64/mingw64/bin/g++.exe",
+        "CMAKE_MAKE_PROGRAM": "C:/msys64/mingw64/bin/mingw32-make.exe"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "msys2-mingw64",
+      "configurePreset": "msys2-mingw64"
+    }
+  ]
+}

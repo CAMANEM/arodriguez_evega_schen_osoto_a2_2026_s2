@@ -1,0 +1,2 @@
+model,workload_n,steps,effective_workers,quantum,smt_factor,seed,runs,warmup,mean_s,stddev_s,ci95_lo,ci95_hi,speedup,efficiency,speedup_ci95_lower,speedup_ci95_upper,mean_stall_time_ns,stddev_stall_time_ns,mean_context_switch_time_ns,mean_stall_count,mean_context_switches,mean_virtual_time_ns,virtual_speedup
+coarse,484,1,2,8,2,42,100,1,0.0002490666,8.22095686849e-05,0.000232953524538,0.000265179675462,0.617793915362,0.308896957681,0.575907209038,0.659680621687,113408,16394.7742352,14176,35.44,32.63,18048,6.44858156028

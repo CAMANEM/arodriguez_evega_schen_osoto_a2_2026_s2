@@ -44,11 +44,13 @@ build/
 Build/
 build-*/
 
+# Generated data and result directories
+data/
+
 # CMake generated files
 CMakeFiles/
 CMakeCache.txt
 cmake_install.cmake
-Makefile
 install_manifest.txt
 compile_commands.json
 
@@ -57,6 +59,9 @@ compile_commands.json
 *.log
 *.bak
 *.swp
+
+# VS Code workspace settings
+.vscode/
 
 # vcpkg
 vcpkg_installed/
@@ -67,3 +72,10 @@ vcpkg_installed/
 # test output & cache
 Testing/
 .cache/
+proyect_1-Multithreading/.DS_Store
+
+# Boids generated evidence
+frames/
+*.ppm
+flock.gif
+flock.mp4

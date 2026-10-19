@@ -1,0 +1,2 @@
+model,run_index,phase,workload_n,steps,effective_workers,seconds
+smt,0,measured,50,10,16,0.004447127
