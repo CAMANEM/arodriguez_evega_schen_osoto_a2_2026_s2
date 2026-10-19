@@ -1,0 +1,9 @@
+# started on Sun Oct 18 15:46:48 2026
+
+81285972,,cycles,24520228,100.00,,
+63982470,,instructions,24520228,100.00,,
+6846893,,cache-references,24520228,100.00,,
+639526,,cache-misses,24520228,100.00,,
+32,,context-switches,24520228,100.00,,
+0,,cpu-migrations,24520228,100.00,,
+24.52,msec,task-clock,24520228,100.00,,

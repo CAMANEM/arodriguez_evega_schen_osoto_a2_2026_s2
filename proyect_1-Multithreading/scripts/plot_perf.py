@@ -4,6 +4,10 @@
 Reads the manifest produced by perf_profile_all.sh, parses each
 `perf stat -x,` file, writes perf_counters.csv, and saves plots under --figures.
 
+The raw CSV paths in a copied campaign may still point to the original Linux
+workspace. When such a path is unavailable, this script resolves the file by
+its basename under the manifest's sibling `raw/` directory.
+
 Usage:
   python3 scripts/plot_perf.py --manifest data/perf/<ts>/manifest.csv \\
       --outdir data/perf/<ts> --figures data/perf/<ts>/figures
@@ -85,6 +89,22 @@ def _parse_number(raw: str) -> float | None:
         return None
 
 
+def resolve_perf_csv(manifest_path: Path, raw_path: str) -> Path:
+    """Resolve a manifest path, including paths from a copied Linux campaign."""
+    path = Path(raw_path)
+    if path.is_file():
+        return path
+
+    copied_path = manifest_path.parent / "raw" / path.name
+    if copied_path.is_file():
+        return copied_path
+
+    raise FileNotFoundError(
+        f"perf CSV not found: {raw_path} "
+        f"(also checked {copied_path})"
+    )
+
+
 def parse_perf_stat_csv(path: Path) -> dict[str, float]:
     """Parse `perf stat -x,` output into a flat event → value map."""
     values: dict[str, float] = {}
@@ -117,10 +137,12 @@ def load_manifest(path: Path) -> list[dict[str, str]]:
         return list(csv.DictReader(handle))
 
 
-def consolidate(rows: list[dict[str, str]]) -> list[dict[str, object]]:
+def consolidate(
+    rows: list[dict[str, str]], manifest_path: Path
+) -> list[dict[str, object]]:
     consolidated: list[dict[str, object]] = []
     for row in rows:
-        perf_path = Path(row["perf_csv"])
+        perf_path = resolve_perf_csv(manifest_path, row["perf_csv"])
         events = parse_perf_stat_csv(perf_path)
         cycles = events.get("cycles")
         instructions = events.get("instructions")
@@ -477,7 +499,11 @@ def main() -> int:
         print("ERROR: empty manifest", file=sys.stderr)
         return 1
 
-    rows = consolidate(manifest_rows)
+    try:
+        rows = consolidate(manifest_rows, args.manifest)
+    except FileNotFoundError as error:
+        print(f"ERROR: {error}", file=sys.stderr)
+        return 1
     counters_path = args.outdir / "perf_counters.csv"
     write_counters(counters_path, rows)
     print(f"Wrote {counters_path} ({len(rows)} rows)")

@@ -1,0 +1,3 @@
+model,run_index,phase,workload_n,steps,effective_workers,seconds
+sequential,0,measured,50,10,1,0.000664527
+coarse,0,measured,50,10,2,0.001446486

@@ -1,0 +1,10 @@
+model,stage,workload_n,steps,effective_workers,quantum,smt_factor,seed,runs,warmup,mean_s,stddev_s,ci95_lo,ci95_hi,speedup,efficiency
+sequential,total,500,10,1,8,2,42,1,0,0.055828277,0,0.055828277,0.055828277,1,1
+sequential,Setup,500,10,1,8,2,42,1,0,5.5e-08,0,5.5e-08,5.5e-08,1,1
+sequential,NeighborStructure,500,10,1,8,2,42,1,0,0.019984072,0,0.019984072,0.019984072,1,1
+sequential,Density,500,10,1,8,2,42,1,0,0.012214741,0,0.012214741,0.012214741,1,1
+sequential,Pressure,500,10,1,8,2,42,1,0,5.2246e-05,0,5.2246e-05,5.2246e-05,1,1
+sequential,Forces,500,10,1,8,2,42,1,0,0.023415434,0,0.023415434,0.023415434,1,1
+sequential,Integrate,500,10,1,8,2,42,1,0,9.5569e-05,0,9.5569e-05,9.5569e-05,1,1
+sequential,Boundary,500,10,1,8,2,42,1,0,6.1898e-05,0,6.1898e-05,6.1898e-05,1,1
+sequential,Metrics,500,10,1,8,2,42,1,0,2.16e-07,0,2.16e-07,2.16e-07,1,1

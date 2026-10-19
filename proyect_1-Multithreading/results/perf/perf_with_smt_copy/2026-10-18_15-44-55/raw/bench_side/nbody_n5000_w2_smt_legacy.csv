@@ -1,0 +1,2 @@
+iteracion,particulas,modo,steps,metodologia,nucleos,hilos,stalls_totales,tiempo_total_ms
+1,5000,Headless,10,SMT,2,4,2471,497.308

@@ -217,6 +217,18 @@ python3 proyect_1-Multithreading/scripts/plot_perf.py \
   --outdir proyect_1-Multithreading/data/perf/<ts>
 ```
 
+For copied campaigns, the manifest may retain the original Linux paths. The
+plot script automatically falls back to `<campaign>/raw/<filename>` when an
+absolute `perf_csv` path is unavailable, so the copied campaign can be
+plotted in place without rerunning `perf`.
+
+The plotting script uses Python's standard library plus `matplotlib`. Install
+the direct dependency with:
+
+```bash
+python3 -m pip install -r proyect_1-Multithreading/requirements-perf.txt
+```
+
 ### Output layout
 
 ```text
