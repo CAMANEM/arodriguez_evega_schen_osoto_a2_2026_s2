@@ -1,0 +1,2 @@
+iteracion,particulas,modo,steps,metodologia,nucleos,hilos,stalls_totales,tiempo_total_ms
+1,50,Headless,10,Sequential,1,1,32,2.091

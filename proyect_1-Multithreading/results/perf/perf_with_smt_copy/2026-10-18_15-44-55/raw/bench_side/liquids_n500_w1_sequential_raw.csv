@@ -1,0 +1,10 @@
+model,stage,run_index,phase,workload_n,steps,requested_threads,effective_workers,quantum,chunk,smt_factor,seed,seconds
+sequential,total,0,measured,500,10,1,1,8,64,2,42,0.055828277
+sequential,Setup,0,measured,500,10,1,1,8,64,2,42,5.5e-08
+sequential,NeighborStructure,0,measured,500,10,1,1,8,64,2,42,0.019984072
+sequential,Density,0,measured,500,10,1,1,8,64,2,42,0.012214741
+sequential,Pressure,0,measured,500,10,1,1,8,64,2,42,5.2246e-05
+sequential,Forces,0,measured,500,10,1,1,8,64,2,42,0.023415434
+sequential,Integrate,0,measured,500,10,1,1,8,64,2,42,9.5569e-05
+sequential,Boundary,0,measured,500,10,1,1,8,64,2,42,6.1898e-05
+sequential,Metrics,0,measured,500,10,1,1,8,64,2,42,2.16e-07
