@@ -1,0 +1,17 @@
+iteracion,particulas,modo,steps,metodologia,nucleos,hilos,stalls_totales,tiempo_total_ms
+1,5000,Headless,10,Fine-grained,2,2,2525,686401.677
+2,5000,Headless,10,Fine-grained,2,2,2521,690390.258
+3,5000,Headless,10,Fine-grained,2,2,2479,690292.291
+4,5000,Headless,10,Fine-grained,2,2,2554,690516.519
+5,5000,Headless,10,Fine-grained,2,2,2477,688991.227
+6,5000,Headless,10,Fine-grained,2,2,2452,688440.859
+7,5000,Headless,10,Fine-grained,2,2,2421,690559.648
+8,5000,Headless,10,Fine-grained,2,2,2468,685348.942
+9,5000,Headless,10,Fine-grained,2,2,2414,682191.636
+10,5000,Headless,10,Fine-grained,2,2,2485,681473.472
+11,5000,Headless,10,Fine-grained,2,2,2533,684014.993
+12,5000,Headless,10,Fine-grained,2,2,2542,681890.465
+13,5000,Headless,10,Fine-grained,2,2,2427,683086.485
+14,5000,Headless,10,Fine-grained,2,2,2516,687805.342
+15,5000,Headless,10,Fine-grained,2,2,2524,684490.364
+16,5000,Headless,10,Fine-grained,2,2,2559,686371.906
