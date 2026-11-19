@@ -36,3 +36,62 @@ project_2-Data_Level_Parallelism/
 ├── scripts/                Scripts de automatización de ejecuciones y barridos de parámetros
 └── paper/                  Artículo en formato IEEE Transactions
 ```
+
+## Compilación y ejecución secuencial
+
+### Compilación
+
+Desde la raíz del proyecto (`project_2-Data_Level_Parallelism/`):
+
+```powershell
+cmake --preset benchmark
+# O bien,
+cmake --build --preset benchmark
+```
+
+El ejecutable queda en `build/ray_tracing/rt_benchmark.exe`.
+
+### Uso
+
+```
+rt_benchmark [--width W] [--height H] [--runs N] [--warmup N]
+             [--output results/benchmark.csv] [--image results/frame.ppm]
+```
+
+| Parametro | Descripción | Default |
+|--------|-------------|---------|
+| `--width W` | Ancho de la imagen en píxeles | 100 |
+| `--height H` | Alto de la imagen en píxeles | 100 |
+| `--runs N` | Número de ejecuciones medidas | 10 |
+| `--warmup N` | Ejecuciones descartadas antes de medir | 1 |
+| `--output PATH` | Ruta del CSV de resultados | `results/benchmark.csv` |
+| `--image PATH` | Guarda el último frame renderizado como PPM | (desactivado) |
+
+La variable paralelizable son los `rayos (N) = width × height`. Por lo tanto, para evaluar escalabilidad se recomienda alterar el valor de `--width` y `--height` entre ejecuciones.
+
+Cada ejecución produce dos archivos:
+- `results/benchmark.csv` — sobreescrito con los resultados más recientes.
+- `results/log/execution_YYYYMMDD_HHMMSS.csv` — copia permanente con timestamp.
+
+### Ejemplos de ejecución
+
+Corridas con `--runs 10 --warmup 10`, ejecutadas desde la raíz del proyecto:
+
+#### 100 × 100 (10 000 rayos)
+
+```powershell
+.\build\ray_tracing\rt_benchmark.exe --width 100 --height 100 --runs 10 --warmup 10
+```
+
+#### 1000 × 1000 (1 000 000 rayos)
+
+```powershell
+.\build\ray_tracing\rt_benchmark.exe --width 1000 --height 1000 --runs 10 --warmup 10
+```
+
+#### 10000 × 10000 (100 000 000 rayos)
+
+```powershell
+.\build\ray_tracing\rt_benchmark.exe --width 10000 --height 10000 --runs 10 --warmup 10
+```
+

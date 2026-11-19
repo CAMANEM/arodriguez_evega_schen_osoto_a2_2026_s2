@@ -1,0 +1,35 @@
+{
+  "version": 3,
+  "configurePresets": [
+    {
+      "name": "benchmark",
+      "displayName": "Benchmark/Release (Ninja + w64devkit g++)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_CXX_COMPILER": "C:/raylib/w64devkit/bin/g++.exe"
+      }
+    },
+    {
+      "name": "debug",
+      "displayName": "Debug (Ninja + w64devkit g++)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build_debug",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_CXX_COMPILER": "C:/raylib/w64devkit/bin/g++.exe"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "benchmark",
+      "configurePreset": "benchmark"
+    },
+    {
+      "name": "debug",
+      "configurePreset": "debug"
+    }
+  ]
+}
