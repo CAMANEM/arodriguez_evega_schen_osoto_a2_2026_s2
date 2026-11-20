@@ -101,9 +101,35 @@ alguna diferencia.
 
 Por defecto, cada modelo escribe su CSV en `results/<modelname>_benchmark.csv`
 (por ejemplo `results/sequential_benchmark.csv` y `results/simd_benchmark.csv`).
-También crea una copia con timestamp en `results/log/`. Si se pasa `--output`,
-para un solo modelo se usa esa ruta exacta; con `all`, se usa el directorio de
-esa ruta y se conserva el nombre `<modelname>_benchmark.csv`.
+Al usar `--model all`, también crea `results/summary_benchmark.csv`: `sequential`
+aparece como baseline y `simd` como experimento. El summary incluye el speedup
+respecto al promedio secuencial y el porcentaje de mejora; un porcentaje negativo
+indica que SIMD fue más lento. También se crea una copia con timestamp de cada
+CSV en `results/log/`. Si se pasa `--output`, para un solo modelo se usa esa ruta
+exacta; con `all`, se usa el directorio de esa ruta y se conservan los nombres
+`<modelname>_benchmark.csv` y `summary_benchmark.csv`.
+
+### Graficar tiempos por frame
+
+El programa `plot_benchmark` lee los CSV de ejecuciones de `sequential` y
+`simd` y genera un gráfico SVG con el tiempo de cada frame medido y la media
+de cada modelo. No requiere dependencias externas. El SVG por defecto queda en
+`results/plots/benchmark_times.svg`.
+
+Después de compilar el proyecto, ejecútalo desde su raíz:
+
+```powershell
+.\build\plot_benchmark.exe results\sequential_benchmark.csv results\simd_benchmark.csv
+```
+
+Si compilaste con MinGW Makefiles, usa:
+
+```powershell
+.\build-mingw\plot_benchmark.exe results\sequential_benchmark.csv results\simd_benchmark.csv
+```
+
+Se puede indicar una ruta de salida opcional como tercer argumento:
+`plot_benchmark sequential.csv simd.csv salida.svg`.
 
 ### Ejemplos de ejecución
 
@@ -153,5 +179,6 @@ ctest --test-dir build-mingw --output-on-failure
 
 Los comandos de 200 ejecuciones guardan los últimos frames como
 `results/frame_sequential.ppm` y `results/frame_simd.ppm`. Los CSV quedan en
-`results/sequential_benchmark.csv` y `results/simd_benchmark.csv`.
+`results/sequential_benchmark.csv`, `results/simd_benchmark.csv` y
+`results/summary_benchmark.csv`.
 

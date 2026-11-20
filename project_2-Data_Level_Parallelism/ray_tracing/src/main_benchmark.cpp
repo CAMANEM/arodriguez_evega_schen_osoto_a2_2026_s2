@@ -70,6 +70,46 @@ static void write_csv(const std::string& path,
       << stats.efficiency(stats.mean_s, 1) << '\n';
 }
 
+static void write_comparison_summary_csv(
+    const std::string& path,
+    int rays,
+    int warmup,
+    const std::vector<std::pair<std::string, dlp::RunStats>>& summaries) {
+    const auto baseline = std::find_if(
+        summaries.begin(), summaries.end(),
+        [](const auto& summary) { return summary.first == "sequential"; });
+    if (baseline == summaries.end() || baseline->second.mean_s <= 0.0)
+        throw std::runtime_error("cannot calculate comparison without a positive sequential baseline");
+
+    for (const auto& summary : summaries) {
+        if (summary.second.mean_s <= 0.0)
+            throw std::runtime_error("cannot calculate comparison for model with non-positive mean time: "
+                                     + summary.first);
+    }
+
+    const std::filesystem::path out(path);
+    if (out.has_parent_path())
+        std::filesystem::create_directories(out.parent_path());
+
+    std::ofstream f(path);
+    if (!f) throw std::runtime_error("could not open summary CSV: " + path);
+    f << std::setprecision(12);
+    f << "model,role,rays,runs,warmup,mean_s,stddev_s,min_s,max_s,"
+         "speedup_vs_sequential,improvement_percent_vs_sequential\n";
+
+    for (const auto& summary : summaries) {
+        const bool is_baseline = summary.first == "sequential";
+        const dlp::RunStats& stats = summary.second;
+        const double speedup = is_baseline ? 1.0 : baseline->second.mean_s / stats.mean_s;
+        const double improvement_percent = (speedup - 1.0) * 100.0;
+        f << summary.first << ',' << (is_baseline ? "baseline" : "experiment") << ','
+          << rays << ',' << stats.runs << ',' << warmup << ','
+          << stats.mean_s << ',' << stats.stddev_s << ','
+          << stats.min_s << ',' << stats.max_s << ','
+          << speedup << ',' << improvement_percent << '\n';
+    }
+}
+
 static std::unique_ptr<IRenderer> create_renderer(const std::string& model) {
     if (model == "sequential")
         return std::make_unique<SequentialRenderer>();
@@ -172,6 +212,7 @@ int main(int argc, char* argv[]) {
         const std::filesystem::path all_output_dir =
             output_specified ? requested_output.parent_path() : default_output_dir;
         std::vector<std::pair<std::string, std::vector<Vector3>>> final_frames;
+        std::vector<std::pair<std::string, dlp::RunStats>> model_summaries;
 
         for (const std::string& current_model : models) {
             std::unique_ptr<IRenderer> renderer = create_renderer(current_model);
@@ -192,6 +233,7 @@ int main(int argc, char* argv[]) {
             final_frames.emplace_back(current_model, std::move(last_frame));
 
             const dlp::RunStats stats = dlp::RunStats::from_times(times);
+            model_summaries.emplace_back(current_model, stats);
             std::cout << "model=" << renderer->get_model_name()
                       << "  rays=" << rays
                       << "  (" << constants::IMAGE_WIDTH << 'x' << constants::IMAGE_HEIGHT << ')'
@@ -254,6 +296,11 @@ int main(int argc, char* argv[]) {
             }
             std::cout << "Frame verification passed: all " << final_frames.size()
                       << " models produced identical colors for " << rays << " pixels.\n";
+
+            const std::string summary_path =
+                (all_output_dir / "summary_benchmark.csv").string();
+            write_comparison_summary_csv(summary_path, rays, warmup, model_summaries);
+            std::cout << "Summary CSV: " << summary_path << '\n';
         }
 
         return 0;
