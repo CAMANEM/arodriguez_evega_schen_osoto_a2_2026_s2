@@ -1,0 +1,15 @@
+model,rays,warmup,run,wall_time_s
+sequential,100000000,10,1,1.337788
+sequential,100000000,10,2,1.539496
+sequential,100000000,10,3,1.452803
+sequential,100000000,10,4,1.574238
+sequential,100000000,10,5,1.5922
+sequential,100000000,10,6,1.510213
+sequential,100000000,10,7,1.386225
+sequential,100000000,10,8,1.530655
+sequential,100000000,10,9,1.555094
+sequential,100000000,10,10,1.564671
+
+# summary
+model,rays,runs,warmup,mean_s,stddev_s,min_s,max_s,speedup,efficiency
+sequential,100000000,10,10,1.5043383,0.0850689968595,1.337788,1.5922,1,1
