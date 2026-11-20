@@ -119,10 +119,10 @@ Todos los modelos (1000 × 1000, 10 ejecuciones):
 .\build\ray_tracing\rt_benchmark.exe --model all --width 1000 --height 1000 --runs 10 --warmup 10
 ```
 
-200 ejecuciones y un PPM por modelo:
+#### 200 ejecuciones y PPM por modelo
 
 ```powershell
-.\build\ray_tracing\rt_benchmark.exe --model all --width 100 --height 100 --runs 200 --image results\frame.ppm
+.\build\ray_tracing\rt_benchmark.exe --model all --width 100 --height 100 --runs 200 --warmup 10 --image results\frame.ppm
 ```
 
 Prueba de correctitud:
@@ -142,7 +142,7 @@ Todos los modelos (1000 × 1000, 10 ejecuciones):
 200 ejecuciones y un PPM por modelo:
 
 ```powershell
-.\build-mingw\ray_tracing\rt_benchmark.exe --model all --width 100 --height 100 --runs 200 --image results\frame.ppm
+.\build-mingw\ray_tracing\rt_benchmark.exe --model all --width 1000 --height 1000 --runs 200 --warmup 10 --image results\frame.ppm
 ```
 
 Prueba de correctitud:
