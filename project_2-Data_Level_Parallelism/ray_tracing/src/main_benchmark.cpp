@@ -18,6 +18,7 @@
 #include "utils/Metrics.h"
 #include "utils/Timer.hpp"
 
+#include <algorithm>
 #include <ctime>
 #include <filesystem>
 #include <fstream>
@@ -26,6 +27,7 @@
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 // ---------------------------------------------------------------------------
@@ -68,6 +70,33 @@ static void write_csv(const std::string& path,
       << stats.efficiency(stats.mean_s, 1) << '\n';
 }
 
+static std::unique_ptr<IRenderer> create_renderer(const std::string& model) {
+    if (model == "sequential")
+        return std::make_unique<SequentialRenderer>();
+    if (model == "simd")
+        return std::make_unique<SimdRenderer>();
+    throw std::invalid_argument("unsupported renderer: " + model);
+}
+
+static bool frames_match(const std::vector<Vector3>& expected,
+                         const std::vector<Vector3>& actual,
+                         std::size_t& mismatch_index) {
+    if (expected.size() != actual.size()) {
+        mismatch_index = std::min(expected.size(), actual.size());
+        return false;
+    }
+
+    for (std::size_t i = 0; i < expected.size(); ++i) {
+        if (expected[i].x != actual[i].x ||
+            expected[i].y != actual[i].y ||
+            expected[i].z != actual[i].z) {
+            mismatch_index = i;
+            return false;
+        }
+    }
+    return true;
+}
+
 // ---------------------------------------------------------------------------
 // main
 // ---------------------------------------------------------------------------
@@ -81,6 +110,7 @@ int main(int argc, char* argv[]) {
         std::string model       = "sequential";
         std::string output_csv  = constants::CSV_FILE_SEQUENTIAL;
         std::string output_img  = constants::IMAGE_FILE_SEQUENTIAL;
+        bool        output_specified = false;
         bool        save_image  = false;
 
         for (int i = 1; i < argc; ++i) {
@@ -88,13 +118,13 @@ int main(int argc, char* argv[]) {
             if ((arg == "--help" || arg == "-h")) {
                 std::cout <<
                     "Usage: rt_benchmark [options]\n"
-                    "  --width  N    image width  (default 240)\n"
-                    "  --height N    image height (default 160)\n"
+                    "  --width  N    image width  (default 100)\n"
+                    "  --height N    image height (default 100)\n"
                     "              N rayos = width * height\n"
-                    "  --model NAME  renderer: sequential or simd (default sequential)\n"
+                    "  --model NAME  renderer: sequential, simd, or all (default sequential)\n"
                     "  --runs   N    measured repetitions (default 10)\n"
                     "  --warmup N    discarded warmup runs (default 1)\n"
-                    "  --output PATH CSV output path\n"
+                    "  --output PATH CSV path (or output directory with --model all)\n"
                     "  --image  PATH save last rendered frame as PPM\n";
                 return 0;
             } else if (arg == "--width"  && i + 1 < argc) {
@@ -111,6 +141,7 @@ int main(int argc, char* argv[]) {
                     throw std::invalid_argument("--warmup must be >= 0");
             } else if (arg == "--output" && i + 1 < argc) {
                 output_csv = argv[++i];
+                output_specified = true;
             } else if (arg == "--image"  && i + 1 < argc) {
                 output_img = argv[++i];
                 save_image = true;
@@ -122,73 +153,107 @@ int main(int argc, char* argv[]) {
         constants::set_image_dimensions(img_width, img_height);
         const int rays = constants::IMAGE_WIDTH * constants::IMAGE_HEIGHT;
 
-        std::unique_ptr<IRenderer> renderer;
-        if (model == "sequential")
-            renderer = std::make_unique<SequentialRenderer>();
-        else if (model == "simd")
-            renderer = std::make_unique<SimdRenderer>();
+        std::vector<std::string> models;
+        if (model == "all")
+            models = {"sequential", "simd"};
+        else if (model == "sequential" || model == "simd")
+            models = {model};
         else
-            throw std::invalid_argument("--model must be sequential or simd");
-        renderer->set_camera_pos(constants::CAMERA_ORIGIN);
+            throw std::invalid_argument("--model must be sequential, simd, or all");
 
-        // Warmup (descartado)
-        for (int w = 0; w < warmup; ++w)
-            renderer->render_frame();
-
-        // Ejecuciones medidas
-        std::vector<double> times;
-        times.reserve(runs);
-        std::vector<Vector3> last_frame;
-
-        Timer timer;
-        for (int r = 0; r < runs; ++r) {
-            timer.start();
-            last_frame = renderer->render_frame();
-            times.push_back(timer.stopAndGetMilliseconds() / 1000.0);
-        }
-
-        const dlp::RunStats stats = dlp::RunStats::from_times(times);
-
-        // Consola
-        std::cout << "model=" << renderer->get_model_name()
-                  << "  rays=" << rays
-                  << "  (" << constants::IMAGE_WIDTH << 'x' << constants::IMAGE_HEIGHT << ')'
-                  << "  warmup=" << warmup << "  runs=" << runs << '\n';
-
-        for (int i = 0; i < static_cast<int>(times.size()); ++i)
-            std::cout << "Execution " << (i + 1) << ": "
-                      << std::fixed << std::setprecision(6) << times[i] << " s\n";
-
-        std::cout << '\n'
-                  << std::left << std::setw(12) << "mean_s"
-                  << std::left << std::setw(12) << "stddev_s"
-                  << std::left << std::setw(12) << "min_s"
-                  << std::left << std::setw(12) << "max_s" << '\n';
-        std::cout << std::fixed << std::setprecision(6)
-                  << std::left << std::setw(12) << stats.mean_s
-                  << std::left << std::setw(12) << stats.stddev_s
-                  << std::left << std::setw(12) << stats.min_s
-                  << std::left << std::setw(12) << stats.max_s << '\n';
-
-        // Timestamp para el log
         std::time_t now = std::time(nullptr);
         std::tm* tm_now = std::localtime(&now);
         char timestamp[32];
         std::strftime(timestamp, sizeof(timestamp), "%Y%m%d_%H%M%S", tm_now);
 
-        const std::filesystem::path log_dir =
-            std::filesystem::path(output_csv).parent_path() / "log";
-        const std::string log_csv =
-            (log_dir / ("execution_" + std::string(timestamp) + ".csv")).string();
+        const std::filesystem::path default_output_dir =
+            std::filesystem::path(constants::CSV_FILE_SEQUENTIAL).parent_path();
+        const std::filesystem::path requested_output(output_csv);
+        const std::filesystem::path all_output_dir =
+            output_specified ? requested_output.parent_path() : default_output_dir;
+        std::vector<std::pair<std::string, std::vector<Vector3>>> final_frames;
 
-        write_csv(output_csv, renderer->get_model_name(), rays, warmup, times, stats);
-        write_csv(log_csv,    renderer->get_model_name(), rays, warmup, times, stats);
-        std::cout << "CSV: " << output_csv << '\n';
-        std::cout << "Log: " << log_csv    << '\n';
+        for (const std::string& current_model : models) {
+            std::unique_ptr<IRenderer> renderer = create_renderer(current_model);
+            renderer->set_camera_pos(constants::CAMERA_ORIGIN);
 
-        if (save_image) {
-            write_ppm(output_img, last_frame);
-            std::cout << "Image: " << output_img << '\n';
+            for (int w = 0; w < warmup; ++w)
+                renderer->render_frame();
+
+            std::vector<double> times;
+            times.reserve(runs);
+            std::vector<Vector3> last_frame;
+            Timer timer;
+            for (int r = 0; r < runs; ++r) {
+                timer.start();
+                last_frame = renderer->render_frame();
+                times.push_back(timer.stopAndGetMilliseconds() / 1000.0);
+            }
+            final_frames.emplace_back(current_model, std::move(last_frame));
+
+            const dlp::RunStats stats = dlp::RunStats::from_times(times);
+            std::cout << "model=" << renderer->get_model_name()
+                      << "  rays=" << rays
+                      << "  (" << constants::IMAGE_WIDTH << 'x' << constants::IMAGE_HEIGHT << ')'
+                      << "  warmup=" << warmup << "  runs=" << runs << '\n';
+            for (int i = 0; i < static_cast<int>(times.size()); ++i)
+                std::cout << "Execution " << (i + 1) << ": "
+                          << std::fixed << std::setprecision(6) << times[i] << " s\n";
+
+            std::cout << '\n'
+                      << std::left << std::setw(12) << "mean_s"
+                      << std::left << std::setw(12) << "stddev_s"
+                      << std::left << std::setw(12) << "min_s"
+                      << std::left << std::setw(12) << "max_s" << '\n';
+            std::cout << std::fixed << std::setprecision(6)
+                      << std::left << std::setw(12) << stats.mean_s
+                      << std::left << std::setw(12) << stats.stddev_s
+                      << std::left << std::setw(12) << stats.min_s
+                      << std::left << std::setw(12) << stats.max_s << '\n';
+
+            std::filesystem::path model_output;
+            if (models.size() > 1 || !output_specified) {
+                const std::filesystem::path output_dir =
+                    models.size() > 1 ? all_output_dir : default_output_dir;
+                model_output = output_dir / (current_model + "_benchmark.csv");
+            } else {
+                model_output = requested_output;
+            }
+
+            const std::filesystem::path log_dir = model_output.parent_path() / "log";
+            const std::string log_csv =
+                (log_dir / ("execution_" + current_model + "_" +
+                            std::string(timestamp) + ".csv")).string();
+            write_csv(model_output.string(), current_model, rays, warmup, times, stats);
+            write_csv(log_csv, current_model, rays, warmup, times, stats);
+            std::cout << "CSV: " << model_output.string() << '\n';
+            std::cout << "Log: " << log_csv << '\n';
+
+            if (save_image) {
+                std::filesystem::path model_image(output_img);
+                if (models.size() > 1) {
+                    model_image = model_image.parent_path() /
+                        (model_image.stem().string() + "_" + current_model +
+                         model_image.extension().string());
+                }
+                write_ppm(model_image.string(), final_frames.back().second);
+                std::cout << "Image: " << model_image.string() << '\n';
+            }
+        }
+
+        if (final_frames.size() > 1) {
+            const auto& baseline = final_frames.front();
+            for (std::size_t i = 1; i < final_frames.size(); ++i) {
+                std::size_t mismatch_index = 0;
+                if (!frames_match(baseline.second, final_frames[i].second, mismatch_index)) {
+                    throw std::runtime_error(
+                        "final frame mismatch between " + baseline.first + " and " +
+                        final_frames[i].first + " at pixel " +
+                        std::to_string(mismatch_index));
+                }
+            }
+            std::cout << "Frame verification passed: all " << final_frames.size()
+                      << " models produced identical colors for " << rays << " pixels.\n";
         }
 
         return 0;

@@ -16,9 +16,9 @@ struct CircleConfig {
 };
 
 /** @brief Resolución horizontal del frame, en píxeles. Mutable vía set_image_dimensions(). */
-inline int IMAGE_WIDTH  = 240;
+inline int IMAGE_WIDTH  = 100;
 /** @brief Resolución vertical del frame, en píxeles. Mutable vía set_image_dimensions(). */
-inline int IMAGE_HEIGHT = 160;
+inline int IMAGE_HEIGHT = 100;
 
 /**
  * @brief Ajusta la resolución activa (N rayos = width * height).

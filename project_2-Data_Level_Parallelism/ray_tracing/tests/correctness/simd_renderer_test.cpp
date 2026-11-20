@@ -9,13 +9,13 @@ int main() {
     const std::array<std::array<int, 2>, 6> dimensions = {{
         {{1, 1}}, {{3, 2}}, {{4, 3}}, {{5, 4}}, {{9, 3}}, {{17, 11}}
     }};
-    const std::array<Vector3, 2> cameras = {{
-        constants::CAMERA_ORIGIN, {1.25, 2.0, 9.0}
+    const std::array<Vector2, 2> cameras = {{
+        constants::CAMERA_ORIGIN, {1.25, 2.0}
     }};
 
     for (const auto& size : dimensions) {
         constants::set_image_dimensions(size[0], size[1]);
-        for (const Vector3& camera : cameras) {
+        for (const Vector2& camera : cameras) {
             SequentialRenderer sequential;
             SimdRenderer simd;
             sequential.set_camera_pos(camera);
