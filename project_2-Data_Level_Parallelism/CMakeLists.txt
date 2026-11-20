@@ -5,6 +5,8 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+include(CTest)
 add_subdirectory(ray_tracing)
+add_executable(plot_benchmark scripts/plot_benchmark.cpp)
 
 message(STATUS "dlp_p2 targets: rt_benchmark")

@@ -46,6 +46,8 @@ build-*/
 
 # Generated data and result directories
 data/
+/project_2-Data_Level_Parallelism/results/*
+!/project_2-Data_Level_Parallelism/results/erase_on_commit.txt
 
 # CMake generated files
 CMakeFiles/
