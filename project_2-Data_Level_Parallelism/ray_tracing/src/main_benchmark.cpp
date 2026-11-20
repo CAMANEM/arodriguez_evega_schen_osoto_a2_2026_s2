@@ -12,6 +12,7 @@
  */
 #include "config/raytracing_config.hpp"
 #include "core/strategies/IRenderer.h"
+#include "core/strategies/SimdRenderer.h"
 #include "core/strategies/SequentialRenderer.h"
 #include "utils/image_io.hpp"
 #include "utils/Metrics.h"
@@ -77,6 +78,7 @@ int main(int argc, char* argv[]) {
         int         warmup      = 1;
         int         img_width   = constants::IMAGE_WIDTH;
         int         img_height  = constants::IMAGE_HEIGHT;
+        std::string model       = "sequential";
         std::string output_csv  = constants::CSV_FILE_SEQUENTIAL;
         std::string output_img  = constants::IMAGE_FILE_SEQUENTIAL;
         bool        save_image  = false;
@@ -89,6 +91,7 @@ int main(int argc, char* argv[]) {
                     "  --width  N    image width  (default 240)\n"
                     "  --height N    image height (default 160)\n"
                     "              N rayos = width * height\n"
+                    "  --model NAME  renderer: sequential or simd (default sequential)\n"
                     "  --runs   N    measured repetitions (default 10)\n"
                     "  --warmup N    discarded warmup runs (default 1)\n"
                     "  --output PATH CSV output path\n"
@@ -98,6 +101,8 @@ int main(int argc, char* argv[]) {
                 img_width  = parse_positive_int(argv[++i], "--width");
             } else if (arg == "--height" && i + 1 < argc) {
                 img_height = parse_positive_int(argv[++i], "--height");
+            } else if (arg == "--model" && i + 1 < argc) {
+                model = argv[++i];
             } else if (arg == "--runs"   && i + 1 < argc) {
                 runs   = parse_positive_int(argv[++i], "--runs");
             } else if (arg == "--warmup" && i + 1 < argc) {
@@ -117,7 +122,13 @@ int main(int argc, char* argv[]) {
         constants::set_image_dimensions(img_width, img_height);
         const int rays = constants::IMAGE_WIDTH * constants::IMAGE_HEIGHT;
 
-        std::unique_ptr<IRenderer> renderer = std::make_unique<SequentialRenderer>();
+        std::unique_ptr<IRenderer> renderer;
+        if (model == "sequential")
+            renderer = std::make_unique<SequentialRenderer>();
+        else if (model == "simd")
+            renderer = std::make_unique<SimdRenderer>();
+        else
+            throw std::invalid_argument("--model must be sequential or simd");
         renderer->set_camera_pos(constants::CAMERA_ORIGIN);
 
         // Warmup (descartado)
