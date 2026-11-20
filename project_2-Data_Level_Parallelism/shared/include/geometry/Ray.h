@@ -1,33 +1,28 @@
 #pragma once
-#include "geometry/Vector3.h"
+#include "geometry/Vector2.h"
 #include "config/raytracing_config.hpp"
-#include <cmath>
 
-/** @brief Rayo 3D con origen y dirección unitaria. */
+/** @brief Rayo 2D con origen y dirección unitaria. */
 struct Ray {
-    Vector3 origin;
-    Vector3 direction;
+    Vector2 origin;
+    Vector2 direction;
 
-    Ray(const Vector3& o, const Vector3& d) : origin(o), direction(d.normalize()) {}
+    Ray(const Vector2& o, const Vector2& d) : origin(o), direction(d.normalize()) {}
 };
 
 /**
- * @brief Proyecta el píxel (x, y) como rayo usando una cámara look-at.
+ * @brief Proyecta el píxel (px, py) como rayo 2D usando una cámara perspectiva look-at.
  *
- * La variable paralelizable del benchmark es el conjunto de píxeles: cada llamada
- * a make_ray genera exactamente un rayo independiente de los demás.
+ * px y py se mapean a un punto objetivo en el plano de vista 2D centrado en la escena.
+ * La dirección del rayo se calcula desde cam_pos hacia ese punto, produciendo
+ * N = width × height rayos 2D completamente independientes.
  */
-inline Ray make_ray(int x, int y, const Vector3& cam_pos) {
+inline Ray make_ray(int px, int py, const Vector2& cam_pos) {
     using namespace constants;
-    const Vector3 scene_center(SCENE_CENTER_X, SCENE_CENTER_Y, SCENE_CENTER_Z);
-
-    const Vector3 fwd   = (scene_center - cam_pos).normalize();
-    const Vector3 right = fwd.cross(CAMERA_UP).normalize();
-    const Vector3 up    = right.cross(fwd).normalize();
-
-    const double u      = (2.0 * x / IMAGE_WIDTH)  - 1.0;
-    const double v      = 1.0 - (2.0 * y / IMAGE_HEIGHT);
     const double aspect = static_cast<double>(IMAGE_WIDTH) / IMAGE_HEIGHT;
 
-    return Ray(cam_pos, fwd + right * (u * aspect) + up * v);
+    const double tx = (2.0 * px / IMAGE_WIDTH  - 1.0) * aspect * VIEW_SCALE;
+    const double ty = (1.0 - 2.0 * py / IMAGE_HEIGHT)          * VIEW_SCALE;
+
+    return Ray(cam_pos, Vector2(tx, ty) - cam_pos);
 }
