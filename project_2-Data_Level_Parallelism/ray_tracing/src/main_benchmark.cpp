@@ -14,6 +14,9 @@
 #include "core/strategies/IRenderer.h"
 #include "core/strategies/SimdRenderer.h"
 #include "core/strategies/SequentialRenderer.h"
+#ifdef DLP_ENABLE_CUDA
+#include "core/strategies/CudaRenderer.h"
+#endif
 #include "utils/image_io.hpp"
 #include "utils/Metrics.h"
 #include "utils/Timer.hpp"
@@ -115,6 +118,10 @@ static std::unique_ptr<IRenderer> create_renderer(const std::string& model) {
         return std::make_unique<SequentialRenderer>();
     if (model == "simd")
         return std::make_unique<SimdRenderer>();
+#ifdef DLP_ENABLE_CUDA
+    if (model == "cuda")
+        return std::make_unique<CudaRenderer>();
+#endif
     throw std::invalid_argument("unsupported renderer: " + model);
 }
 
@@ -161,7 +168,11 @@ int main(int argc, char* argv[]) {
                     "  --width  N    image width  (default 100)\n"
                     "  --height N    image height (default 100)\n"
                     "              N rayos = width * height\n"
-                    "  --model NAME  renderer: sequential, simd, or all (default sequential)\n"
+                    "  --model NAME  renderer: sequential, simd, "
+#ifdef DLP_ENABLE_CUDA
+                    "cuda, "
+#endif
+                    "or all (default sequential)\n"
                     "  --runs   N    measured repetitions (default 10)\n"
                     "  --warmup N    discarded warmup runs (default 1)\n"
                     "  --output PATH CSV path (or output directory with --model all)\n"
@@ -194,10 +205,21 @@ int main(int argc, char* argv[]) {
         const int rays = constants::IMAGE_WIDTH * constants::IMAGE_HEIGHT;
 
         std::vector<std::string> models;
-        if (model == "all")
+        if (model == "all") {
             models = {"sequential", "simd"};
-        else if (model == "sequential" || model == "simd")
+#ifdef DLP_ENABLE_CUDA
+            models.push_back("cuda");
+#endif
+        } else if (model == "sequential" || model == "simd")
             models = {model};
+#ifdef DLP_ENABLE_CUDA
+        else if (model == "cuda")
+            models = {model};
+#else
+        else if (model == "cuda")
+            throw std::invalid_argument(
+                "CUDA renderer is not enabled; configure with -DDLP_ENABLE_CUDA=ON");
+#endif
         else
             throw std::invalid_argument("--model must be sequential, simd, or all");
 
