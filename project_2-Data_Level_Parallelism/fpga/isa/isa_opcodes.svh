@@ -1,0 +1,10 @@
+`ifndef RAY_TRACING_ISA_OPCODES_SVH
+`define RAY_TRACING_ISA_OPCODES_SVH
+
+`define ISA_SET_SCENE    8'h01
+`define ISA_LOAD_BUFFER  8'h02
+`define ISA_EXEC_BATCH   8'h03
+`define ISA_READ_STATUS  8'h04
+`define ISA_READ_OUTPUT  8'h05
+
+`endif

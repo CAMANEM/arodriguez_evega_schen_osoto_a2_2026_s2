@@ -79,3 +79,13 @@ frames/
 *.ppm
 flock.gif
 flock.mp4
+
+# Local FPGA/CMake build artifacts
+project_2-Data_Level_Parallelism/build_debug/
+project_2-Data_Level_Parallelism/fpga/quartus_project/db/
+project_2-Data_Level_Parallelism/fpga/quartus_project/incremental_db/
+project_2-Data_Level_Parallelism/fpga/quartus_project/output_files/
+project_2-Data_Level_Parallelism/fpga/quartus_project/simulation/
+project_2-Data_Level_Parallelism/fpga/quartus_project/*.qws
+project_2-Data_Level_Parallelism/fpga/quartus_project/c5_pin_model_dump.txt
+project_2-Data_Level_Parallelism/fpga/quartus_project/*_nativelink_simulation.rpt
