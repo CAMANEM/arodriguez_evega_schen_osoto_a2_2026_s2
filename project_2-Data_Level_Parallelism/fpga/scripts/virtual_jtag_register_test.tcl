@@ -98,6 +98,45 @@ proc read_register {address} {
     return [expr 0x$value_hex]
 }
 
+proc run_and_check_case {case_name expected_hit expected_disc_hi expected_disc_lo} {
+    write_register 7 6
+    write_register 7 1
+
+    set completed 0
+    for {set attempt 0} {$attempt < 100} {incr attempt} {
+        set status [read_register 7]
+        if {$status & 8} {
+            error [format "%s: FPGA reported protocol error (status 0x%08X)." \
+                $case_name $status]
+        }
+        if {(($status & 2) != 0) && (($status & 1) == 0)} {
+            set completed 1
+            break
+        }
+    }
+    if {!$completed} {
+        error "$case_name: ray intersection timed out."
+    }
+
+    set actual_hit [expr {($status & 4) != 0}]
+    if {$actual_hit != $expected_hit} {
+        error [format "%s: expected hit=%d, got status 0x%08X." \
+            $case_name $expected_hit $status]
+    }
+
+    set discriminant_lo [read_register 8]
+    set discriminant_hi [read_register 9]
+    if {$discriminant_hi != $expected_disc_hi ||
+        $discriminant_lo != $expected_disc_lo} {
+        error [format "%s: expected discriminant 0x%08X%08X, got 0x%08X%08X." \
+            $case_name $expected_disc_hi $expected_disc_lo \
+            $discriminant_hi $discriminant_lo]
+    }
+
+    puts [format "PASS: %s hit=%d discriminant=0x%08X%08X" \
+        $case_name $actual_hit $discriminant_hi $discriminant_lo]
+}
+
 set input_registers {
     0 -131072
     1 0
@@ -119,37 +158,23 @@ foreach {address value} $input_registers {
     }
 }
 
-write_register 7 6
-write_register 7 1
+run_and_check_case "forward hit" 1 4 0
 
-set completed 0
-for {set attempt 0} {$attempt < 100} {incr attempt} {
-    set status [read_register 7]
-    if {$status & 8} {
-        error "FPGA reported a register protocol error (status 0x[format %08X $status])."
-    }
-    if {(($status & 2) != 0) && (($status & 1) == 0)} {
-        set completed 1
-        break
-    }
-}
-if {!$completed} {
-    error "Ray intersection did not complete before the polling timeout."
-}
+write_register 0 131072
+run_and_check_case "ray pointing away" 0 4 0
 
-if {($status & 4) == 0} {
-    error [format "Expected a ray hit, got status 0x%08X." $status]
-}
+write_register 0 0
+run_and_check_case "origin inside circle" 0 4 0
 
-set discriminant_lo [read_register 8]
-set discriminant_hi [read_register 9]
-if {$discriminant_lo != 0 || $discriminant_hi != 4} {
-    error [format "Unexpected discriminant: 0x%08X%08X" \
-        $discriminant_hi $discriminant_lo]
-}
+write_register 0 -131072
+write_register 1 65536
+run_and_check_case "tangent" 1 0 0
+
+write_register 0 -65536
+write_register 1 0
+run_and_check_case "near root exactly zero" 0 4 0
 
 device_unlock
 close_device
 
-puts [format "PASS: JTAG ray test hit=1 discriminant=0x%08X%08X" \
-    $discriminant_hi $discriminant_lo]
+puts "PASS: all JTAG ray-circle cases"

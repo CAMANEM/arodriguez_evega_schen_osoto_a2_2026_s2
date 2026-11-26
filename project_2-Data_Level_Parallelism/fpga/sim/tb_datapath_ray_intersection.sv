@@ -36,26 +36,82 @@ module tb_datapath_ray_intersection;
         .discriminant
     );
 
+    task automatic check_case(
+        input string case_name,
+        input logic signed [31:0] ox,
+        input logic signed [31:0] oy,
+        input logic signed [31:0] dx,
+        input logic signed [31:0] dy,
+        input logic signed [31:0] r2,
+        input logic expected_hit,
+        input logic signed [63:0] expected_discriminant
+    );
+        begin
+            @(negedge clk);
+            ray_ox = ox;
+            ray_oy = oy;
+            ray_dx = dx;
+            ray_dy = dy;
+            scene_cx = 32'sd0;
+            scene_cy = 32'sd0;
+            scene_r2 = r2;
+            input_valid = 1'b1;
+
+            @(posedge clk);
+            #1;
+            if (!result_valid)
+                $fatal(1, "%s: result_valid was not asserted", case_name);
+            if (hit !== expected_hit)
+                $fatal(1, "%s: expected hit=%0d, got hit=%0d",
+                       case_name, expected_hit, hit);
+            if (discriminant !== expected_discriminant)
+                $fatal(1, "%s: expected discriminant=%0d, got %0d",
+                       case_name, expected_discriminant, discriminant);
+
+            input_valid = 1'b0;
+        end
+    endtask
+
     initial begin
-        ray_ox = -32'sd131072; // -2.0
-        ray_oy = 32'sd0;
-        ray_dx = Q_ONE;
-        ray_dy = 32'sd0;
-        scene_cx = 32'sd0;
-        scene_cy = 32'sd0;
-        scene_r2 = Q_ONE; // radius squared = 1.0
-
         #25 reset_n = 1'b1;
-        @(negedge clk);
-        input_valid = 1'b1;
-        @(posedge clk);
-        #1;
-        input_valid = 1'b0;
 
-        if (!result_valid || !hit)
-            $fatal(1, "Expected a hit for ray (-2,0) -> (1,0)");
+        check_case(
+            "forward hit",
+            -32'sd131072, 32'sd0, Q_ONE, 32'sd0, Q_ONE,
+            1'b1, 64'sd17179869184
+        );
+        check_case(
+            "ray pointing away",
+            32'sd131072, 32'sd0, Q_ONE, 32'sd0, Q_ONE,
+            1'b0, 64'sd17179869184
+        );
+        check_case(
+            "origin inside circle",
+            32'sd0, 32'sd0, Q_ONE, 32'sd0, Q_ONE,
+            1'b0, 64'sd17179869184
+        );
+        check_case(
+            "miss",
+            -32'sd131072, 32'sd131072, Q_ONE, 32'sd0, Q_ONE,
+            1'b0, -64'sd51539607552
+        );
+        check_case(
+            "tangent",
+            -32'sd131072, Q_ONE, Q_ONE, 32'sd0, Q_ONE,
+            1'b1, 64'sd0
+        );
+        check_case(
+            "near root exactly zero",
+            -Q_ONE, 32'sd0, Q_ONE, 32'sd0, Q_ONE,
+            1'b0, 64'sd17179869184
+        );
+        check_case(
+            "zero direction",
+            -32'sd131072, 32'sd0, 32'sd0, 32'sd0, Q_ONE,
+            1'b0, 64'sd0
+        );
 
-        $display("PASS: hit=%0d discriminant=%0d", hit, discriminant);
+        $display("PASS: all ray-circle datapath cases");
         $finish;
     end
 

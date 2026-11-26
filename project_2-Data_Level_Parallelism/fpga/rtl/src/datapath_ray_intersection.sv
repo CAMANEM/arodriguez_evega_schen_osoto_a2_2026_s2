@@ -60,7 +60,11 @@ module datapath_ray_intersection (
             result_valid <= input_valid;
             if (input_valid) begin
                 discriminant <= delta_full[63:0];
-                hit <= (a_q16_16 != 0) && (delta_full >= 0);
+                // For a > 0 and delta >= 0, t_near > 0 iff b < 0 and c > 0.
+                hit <= (a_q16_16 > 0) &&
+                       (delta_full >= 0) &&
+                       (b_q16_16 < 0) &&
+                       (c_q16_16 > 0);
             end
         end
     end
