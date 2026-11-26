@@ -1,5 +1,6 @@
 #pragma once
 #include "geometry/PixelKernel.h"
+#include "geometry/Vector2.h"
 #include "geometry/Vector3.h"
 #include <string>
 #include <vector>
@@ -23,8 +24,8 @@ public:
     /** @return Nombre del modelo, e.g. "sequential", "simd", "cuda", "fpga". */
     virtual std::string get_model_name() const = 0;
 
-    /** @brief Establece la posición de cámara para el siguiente render_frame(). */
-    virtual void set_camera_pos(const Vector3& pos) { pixel_kernel_.set_camera_pos(pos); }
+    /** @brief Establece la posición de cámara 2D para el siguiente render_frame(). */
+    virtual void set_camera_pos(const Vector2& pos) { pixel_kernel_.set_camera_pos(pos); }
 
 protected:
     PixelKernel pixel_kernel_;

@@ -45,7 +45,11 @@ Desde la raíz del proyecto (`project_2-Data_Level_Parallelism/`):
 
 ```powershell
 cmake --preset benchmark
-# O bien,
+```
+
+O bien,
+
+```powershell
 cmake --build --preset benchmark
 ```
 

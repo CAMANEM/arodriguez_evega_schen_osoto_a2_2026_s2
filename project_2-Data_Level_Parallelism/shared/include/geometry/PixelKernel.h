@@ -10,10 +10,10 @@
  */
 class PixelKernel {
 public:
-    void    set_camera_pos(const Vector3& pos) { camera_pos_ = pos; }
+    void    set_camera_pos(const Vector2& pos) { camera_pos_ = pos; }
     Vector3 compute(int x, int y) const { return scene_.trace(make_ray(x, y, camera_pos_)); }
 
 private:
     Scene   scene_;
-    Vector3 camera_pos_;
+    Vector2 camera_pos_;
 };
